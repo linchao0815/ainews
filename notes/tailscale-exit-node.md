@@ -9,7 +9,7 @@
 
 ## 1. 為什麼需要 exit node
 
-咖啡廳、機場的公共 Wi-Fi 大多沒加密，同一段網路的其他使用者，理論上有辦法用技術手段側錄或攔截流量（例如假熱點、ARP 欺騙）。銀行 App、購物網站雖然本身走 HTTPS，但連線metadata、DNS 查詢還是可能被看到你在連什麼服務。
+咖啡廳、機場的公共 Wi-Fi 大多沒加密，同一段網路的其他使用者，理論上有辦法用技術手段側錄或攔截流量（例如假熱點、ARP 欺騙）。銀行 App、購物網站雖然本身走 HTTPS，但連線 metadata、DNS 查詢還是可能被看到你在連什麼服務。
 
 開啟 exit node 之後，手機的**全部流量**（不只是連家裡那台電腦的流量）都會先繞進 tailnet，從家裡電腦的實體網路出口再送到公網。效果等同：
 
@@ -27,34 +27,41 @@
 
 ### 2.1 開啟 IP forwarding（Linux 才需要，Mac/Windows 不用）
 
-只有家裡那台是 Linux 主機時要做這步，Mac 和 Windows 上的 Tailscale 客戶端會自動處理：
+只有家裡那台是 Linux 主機時要做這步，Mac 和 Windows 上的 Tailscale 客戶端會自動處理。官方建議直接寫進設定檔並套用，一次到位（重開機也不會失效）：
 
 ```bash
-sudo sysctl -w net.ipv4.ip_forward=1
-sudo sysctl -w net.ipv6.conf.all.forwarding=1
+echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
 ```
 
-要重開機也保留設定，把這兩行加進 `/etc/sysctl.conf`。
+如果系統沒有 `/etc/sysctl.d` 目錄，改寫進 `/etc/sysctl.conf` 再執行 `sudo sysctl -p /etc/sysctl.conf`。
 
 ### 2.2 用 `--advertise-exit-node` 重新註冊
 
-在家裡電腦的終端機執行：
+在家裡電腦的終端機執行（`tailscale set` 只改這一項設定，不會動到其他既有設定，比重跑一次 `tailscale up` 更保險）：
+
+```bash
+sudo tailscale set --advertise-exit-node
+```
+
+第一次設定、或想用 `tailscale up` 一次到位也可以，效果相同：
 
 ```bash
 sudo tailscale up --advertise-exit-node
 ```
 
-Mac / Windows 圖形介面版本則是：選單列圖示 → **Preferences（偏好設定）** → 打開 **"Use as exit node"（設為出口節點）**。
+Mac / Windows 圖形介面則是透過 Tailscale 內建的裝置管理網頁（選單列圖示 → **"Manage this device..."**，會開啟 `http://100.x.x.x:5252` 這類本機頁面）：**This device → Exit node → Run as exit node**。
 
 ### 2.3 到管理後台核准
 
 執行完上面指令後，家裡電腦不會馬上生效，要到 [Tailscale 管理後台](https://login.tailscale.com/admin/machines) 手動核准：
 
-1. 找到家裡那台電腦
-2. 點右側選單「…」
-3. 勾選 **"Edit route settings" → 允許 "Use as exit node"**
+1. 找到家裡那台電腦——如果還沒核准，它旁邊會有一個藍色的 **Exit Node** 徽章加驚嘆號
+2. 點右側選單「…」→ **"Edit route settings"**
+3. 勾選 **"Use as exit node"** → **Save**
 
-沒做這一步，手機那端會看不到這台機器可選為 exit node。
+沒做這一步，手機那端會看不到這台機器可選為 exit node。（如果你在 ACL 裡設定過 `autoApprovers`，符合條件的裝置會自動核准，不用手動做這步。）
 
 ---
 
@@ -72,6 +79,7 @@ Mac / Windows 圖形介面版本則是：選單列圖示 → **Preferences（偏
 1. 打開 Tailscale App，側邊選單
 2. **Exit node** → 選家裡電腦
 3. 系統會跳出 VPN 連線確認，允許即可
+4. 需要同時連家裡區網內其他裝置（例如 NAS），可以另外開啟 **Allow LAN access**
 
 開啟後，手機上所有 App 的流量都會走這條路徑，不只是原本 tailnet 內部的服務。
 
@@ -97,4 +105,13 @@ Mac / Windows 圖形介面版本則是：選單列圖示 → **Preferences（偏
 - **上傳頻寬是瓶頸**：看第 1 節，重度下載（例如大檔案、4K 影片）建議關閉 exit node，只在瀏覽敏感網站、視訊、公共 Wi-Fi 時開啟。
 - **部分網站會誤判成異常流量**：因為你的 IP 突然「跳」到家裡那條線，某些銀行 / 購物網站可能觸發風控（簡訊驗證、圖形驗證碼），屬正常現象，驗證過就好。
 - **手機耗電略增**：VPN 常駐連線會增加背景耗電，不是長時間出門建議用完關掉。
-- **免費方案額度**：Tailscale 個人免費方案最多 3 個使用者、100 台裝置，一般家庭遠遠用不完，exit node 功能不額外收費。
+- **免費方案額度**：Tailscale 個人（Personal）免費方案目前（2026-08）是最多 **6 個使用者**、每個使用者可連接的**裝置數量沒有上限**；第 7 個使用者加入會讓整個 tailnet 轉為付費方案。一般家庭用不到這麼多人，exit node 功能本身完全免費、不額外收費。
+
+---
+
+## 參考來源
+
+- [Exit nodes (route all traffic) · Tailscale Docs](https://tailscale.com/docs/features/exit-nodes)
+- [Use exit nodes · Tailscale Docs](https://tailscale.com/docs/features/exit-nodes/how-to/setup)
+- [tailscale up command · Tailscale Docs](https://tailscale.com/kb/1241/tailscale-up)
+- [Free pricing plans and discounts · Tailscale Docs](https://tailscale.com/docs/account/manage-plans/free-plans-discounts)
