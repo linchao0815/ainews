@@ -26,6 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the rebase below can find a merge base; a shallow clone makes every file an add/add conflict.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -55,5 +58,5 @@ jobs:
             exit 0
           fi
           git commit -m "Telegram inbox: collect links $(date -u +%Y-%m-%dT%H:%MZ)"
-          git pull --rebase origin main
-          git push
+          git pull --rebase origin "$GITHUB_REF_NAME"
+          git push origin HEAD:"$GITHUB_REF_NAME"
