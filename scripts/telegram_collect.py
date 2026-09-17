@@ -20,7 +20,7 @@ STATE = INBOX / "state.json"
 # Login-walled / JS-rendered platforms: plain fetching only yields a shell, so flag for a human.
 SOCIAL_HOSTS = ("facebook.com", "fb.com", "fb.watch", "instagram.com", "threads.net", "threads.com", "x.com", "twitter.com")
 SKIP_HOSTS = ("t.me", "telegram.me", "telegram.org")
-TRACKING_PARAMS = ("utm_", "fbclid", "igshid", "igsh", "gclid", "mc_cid", "mc_eid", "ref_src")
+TRACKING_PARAMS = ("utm_", "fbclid", "igshid", "igsh", "gclid", "mc_cid", "mc_eid", "ref_src", "xmt", "slof")
 MAX_TEXT_CHARS = 6000
 MAX_SEEN = 5000
 USER_AGENT = "Mozilla/5.0 (compatible; ainews-telegram-collector/1.0)"
@@ -51,13 +51,18 @@ def normalize_url(url: str) -> str:
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
     parts = urlsplit(url)
-    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if not k.lower().startswith(TRACKING_PARAMS)]
+    query = sorted((k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if not k.lower().startswith(TRACKING_PARAMS))
     return urlunsplit((parts.scheme, parts.netloc.lower(), parts.path, urlencode(query), ""))
 
 
 def host_of(url: str) -> str:
     host = urlsplit(url).netloc.lower()
     return host[4:] if host.startswith("www.") else host
+
+
+def dedupe_key(url: str) -> str:
+    parts = urlsplit(url)
+    return urlunsplit(("https", host_of(url), parts.path.rstrip("/"), parts.query, ""))
 
 
 def host_in(host: str, hosts: tuple[str, ...]) -> bool:
@@ -179,7 +184,7 @@ def main() -> None:
             url = normalize_url(raw)
             if host_in(host_of(url), SKIP_HOSTS):
                 continue
-            key = hashlib.sha1(url.encode()).hexdigest()
+            key = hashlib.sha1(dedupe_key(url).encode()).hexdigest()
             if key in seen:
                 continue
             seen.add(key)
