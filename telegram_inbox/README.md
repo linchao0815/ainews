@@ -35,13 +35,10 @@
 ## 設定 3：回補歷史連結
 
 1. Telegram Desktop → 開頻道 → ⋮ → Export chat history → 格式選 **JSON**、不勾任何媒體 → 得到 `result.json`。
-2. 在 repo 根目錄執行：
-   ```bash
-   pip install -r scripts/requirements.txt
-   python scripts/telegram_collect.py --from-export /path/to/result.json
-   git add telegram_inbox && git commit -m "Backfill Telegram history" && git push
-   ```
-   結果會全部寫進當天的檔案，但每條保留原始貼文時間。
+2. 二選一：
+   - **本機**：`pip install -r scripts/requirements.txt && python scripts/telegram_collect.py --from-export /path/to/result.json`，然後 commit `telegram_inbox/`。
+   - **Actions**：把 `result.json` 放進 repo（例如 `scripts/backfill/`）推上分支，Actions → Telegram link collector → Run workflow → 選該分支、`export_path` 填檔案路徑。跑完記得把匯出檔移掉再合併。
+3. 結果寫進 `backfill-YYYY-MM-DD.jsonl` / `.md`（不混入當天的即時收集），每條保留原始貼文時間。
 
 ## 輸出檔案
 

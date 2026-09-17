@@ -250,14 +250,13 @@ def process(candidates: list[Candidate], state: dict, now: dt.datetime) -> list[
     return new_entries
 
 
-def write_outputs(new_entries: list[dict], now: dt.datetime) -> None:
-    day = now.strftime("%Y-%m-%d")
-    jsonl = INBOX / f"{day}.jsonl"
+def write_outputs(new_entries: list[dict], label: str) -> None:
+    jsonl = INBOX / f"{label}.jsonl"
     with jsonl.open("a", encoding="utf-8") as f:
         for e in new_entries:
             f.write(json.dumps(e, ensure_ascii=False) + "\n")
-    day_entries = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
-    (INBOX / f"{day}.md").write_text(render_markdown(day_entries, day), encoding="utf-8")
+    all_entries = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
+    (INBOX / f"{label}.md").write_text(render_markdown(all_entries, label), encoding="utf-8")
 
 
 def main() -> None:
@@ -270,16 +269,19 @@ def main() -> None:
     INBOX.mkdir(exist_ok=True)
     state = json.loads(STATE.read_text()) if STATE.exists() else {"last_update_id": 0, "seen": []}
 
+    export_path = args.from_export or (Path(os.environ["INBOX_EXPORT"]) if os.environ.get("INBOX_EXPORT", "").strip() else None)
+    label = now.strftime("%Y-%m-%d")
     if os.environ.get("INBOX_URLS", "").strip():
         candidates = candidates_from_env(now)
-    elif args.from_export:
-        candidates = candidates_from_export(args.from_export, tz)
+    elif export_path:
+        candidates = candidates_from_export(export_path, tz)
+        label = f"backfill-{label}"   # keep historical links out of the day's live file
     else:
         candidates = candidates_from_telegram(state, tz)
 
     new_entries = process(candidates, state, now)
     if new_entries:
-        write_outputs(new_entries, now)
+        write_outputs(new_entries, label)
 
     state["seen"] = state["seen"][-MAX_SEEN:]
     STATE.write_text(json.dumps(state, indent=1), encoding="utf-8")
