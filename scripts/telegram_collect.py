@@ -27,7 +27,7 @@ STATE = INBOX / "state.json"
 # Login-walled / JS-rendered platforms: plain fetching only yields a shell, so flag for a human.
 SOCIAL_HOSTS = ("facebook.com", "fb.com", "fb.watch", "instagram.com", "threads.net", "threads.com", "x.com", "twitter.com")
 SKIP_HOSTS = ("t.me", "telegram.me", "telegram.org")
-TRACKING_PARAMS = ("utm_", "fbclid", "igshid", "igsh", "gclid", "mc_cid", "mc_eid", "ref_src", "xmt", "slof")
+TRACKING_PARAMS = ("utm_", "fbclid", "igshid", "igsh", "gclid", "mc_cid", "mc_eid", "ref_src", "xmt", "slof", "mibextid", "rdid", "share_url")
 MAX_TEXT_CHARS = 6000
 MAX_SEEN = 5000
 USER_AGENT = "Mozilla/5.0 (compatible; ainews-telegram-collector/1.0)"
