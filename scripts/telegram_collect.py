@@ -132,10 +132,25 @@ def render_markdown(entries: list[dict], day: str) -> str:
     return "\n".join(lines)
 
 
+def bot_diagnostics(api: str) -> None:
+    me = requests.get(f"{api}/getMe", timeout=30).json()
+    if not me.get("ok"):
+        sys.exit(f"getMe failed: {me.get('description', me)} — check TELEGRAM_BOT_TOKEN")
+    bot = me["result"]
+    print(f"bot: @{bot.get('username')} (id {bot['id']})")
+
+    hook = requests.get(f"{api}/getWebhookInfo", timeout=30).json().get("result", {})
+    print(f"webhook: {hook.get('url') or '(none)'} | pending updates on Telegram side: {hook.get('pending_update_count', 0)}")
+    if hook.get("url"):
+        sys.exit("A webhook is set on this bot, so getUpdates receives nothing; call deleteWebhook first.")
+
+
 def main() -> None:
     token = os.environ["TELEGRAM_BOT_TOKEN"]
+    api = f"https://api.telegram.org/bot{token}"
     allowed_chats = {c.strip() for c in os.environ.get("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",") if c.strip()}
     tz = ZoneInfo(os.environ.get("INBOX_TZ", "Asia/Taipei"))
+    bot_diagnostics(api)
 
     INBOX.mkdir(exist_ok=True)
     state = json.loads(STATE.read_text()) if STATE.exists() else {"last_update_id": 0, "seen": []}
@@ -144,11 +159,11 @@ def main() -> None:
     params = {"timeout": 0, "allowed_updates": json.dumps(["message", "channel_post"])}
     if state["last_update_id"]:
         params["offset"] = state["last_update_id"] + 1
-    resp = requests.get(f"https://api.telegram.org/bot{token}/getUpdates", params=params, timeout=30)
-    if resp.status_code == 409:
-        sys.exit("getUpdates conflicts with an active webhook on this bot; call deleteWebhook first.")
+    resp = requests.get(f"{api}/getUpdates", params=params, timeout=30)
     resp.raise_for_status()
     updates = resp.json()["result"]
+    if not updates:
+        print("getUpdates returned nothing. If you just posted, confirm the bot is a channel ADMIN and the post was made after it became admin.")
 
     now = dt.datetime.now(tz)
     new_entries = []
