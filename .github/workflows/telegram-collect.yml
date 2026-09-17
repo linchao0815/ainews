@@ -5,6 +5,9 @@ on:
     # Every 2 hours. Telegram only retains unconfirmed getUpdates results for 24h, so keep this well under a day.
     - cron: "17 */2 * * *"
   workflow_dispatch:
+  repository_dispatch:
+    # POST /repos/{owner}/{repo}/dispatches with {"event_type": "collect-url", "client_payload": {"url": "...", "source": "..."}}
+    types: [collect-url]
 
 permissions:
   contents: write
@@ -32,6 +35,9 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_ALLOWED_CHAT_IDS: ${{ vars.TELEGRAM_ALLOWED_CHAT_IDS }}
+          # Empty on schedule/workflow_dispatch, so the script falls back to polling Telegram.
+          INBOX_URLS: ${{ github.event.client_payload.url }}
+          INBOX_SOURCE: ${{ github.event.client_payload.source }}
 
       - name: Commit inbox changes
         run: |
