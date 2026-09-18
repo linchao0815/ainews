@@ -75,3 +75,35 @@ Competitive research 正在從「人工做功課」，變成「即時掃描整�
 - [ChatGPT pioneer launches Jev model for programmatic logic](https://www.artificialintelligence-news.com/news/chatgpt-pioneer-launches-jev-model-for-programmatic-logic/)
 - [TypeSafe AI, founded by ChatGPT co-inventor, emerges from stealth with $40M](https://techstartups.com/2026/09/16/typesafe-ai-an-ai-startup-founded-by-chatgpt-co-inventor-emerges-from-stealth-with-40m-to-build-ai-thats-100x-faster-and-cheaper/)
 - [Jev (typesafe) · Cloudflare AI docs](https://developers.cloudflare.com/ai/models/typesafe/jev/)
+
+---
+
+## OpenClaude（Gitlawb/openclaude）新功能追蹤
+
+> 背景與來源說明見另一篇筆記：[openclaude-vs-claude-code.md](./openclaude-vs-claude-code.md)（含「未經 Anthropic 授權的 Claude Code 衍生代碼」這項關鍵發現）。這裡只追蹤功能演進，不重複背景說明。
+
+### 2026-09-18 追蹤
+
+- **加入日期**：2026-09-18
+- **比對範圍**：`aceacf0`（2026-09-02 初次拉取）→ `d16318a`（本次查詢，共 13 個 commit）
+- **版本號**：仍是 `0.30.0`（尚未發新版）
+
+**新功能（feat）**：
+
+| 功能 | 說明 |
+|---|---|
+| **Command Code 混合 Gateway**（#2196） | 新增 "Command Code" OpenAI 相容聚合型 gateway provider，用專屬 `CMD_API_KEY` 認證。單一 PR 補了 30+ 次修正（模型驗證、憑證隔離、路由優先權），上線過程明顯不順 |
+| **Skills 撤銷清單機制**（#2187） | 安裝 skill 時讀取 registry 旁的 `revocations.json`（或 `OPENCLAUDE_SKILLS_REVOCATIONS_URL`），id/版本/sha256 命中撤銷清單就拒裝。清單不存在＝不撤銷，但清單格式錯誤會讓安裝失敗（fail-closed）——資安補強功能 |
+| **Skill 驗證：撤銷 + "eyebrow drift" 檢查**（#2215） | 延伸上面機制，再檢查 skill 描述/metadata 是否偏離原始註冊內容 |
+| **啟動器記憶體上限百分比**（#2219） | 新增 `--max-old-space-size-percentage`，用「佔可用記憶體百分比」設定 Node heap 上限，取代原本寫死的 8192 MB，方便在小型 container 或大型工作站上自動調整 |
+
+**值得注意的修正（fix / docs）**：
+
+- xAI OAuth：回呼前先驗證 state，避免 callback 被搶先處理（安全性修正）
+- Plugin marketplace 快取：Windows 上避免用「長得很像」的網域繞過 hostPattern 檢查
+- 新增 `docs: skills 撰寫指南` 與給 LLM 探索用的 `llms.txt`
+- 辨識 OpenCode Go 的請求做特殊處理
+- SDK：修正 async generator 的 session context 沒被保留的問題
+- Profile 系統：context 上限改成套用到該 profile 底下所有模型
+
+**觀察**：這波更新偏向「補洞」和「新增一個 provider」，沒有架構級大改動。比較值得留意的是 **skills 撤銷清單（revocations.json）**，代表他們開始考慮「已發佈的 skill 之後發現有問題該怎麼下架」這個治理問題。
