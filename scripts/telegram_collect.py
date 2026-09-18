@@ -203,14 +203,21 @@ def candidates_from_telegram(state: dict, tz: ZoneInfo) -> list[Candidate]:
     allowed_chats = {c.strip() for c in os.environ.get("TELEGRAM_ALLOWED_CHAT_IDS", "").split(",") if c.strip()}
     bot_diagnostics(api)
 
-    params = {"timeout": 0, "allowed_updates": json.dumps(["message", "channel_post"])}
-    if state["last_update_id"]:
-        params["offset"] = state["last_update_id"] + 1
-    resp = requests.get(f"{api}/getUpdates", params=params, timeout=30)
-    resp.raise_for_status()
-    updates = resp.json()["result"]
+    # getUpdates returns at most 100 per call; page until a short page so a once-a-day run still drains everything.
+    updates = []
+    while True:
+        params = {"timeout": 0, "limit": 100, "allowed_updates": json.dumps(["message", "channel_post"])}
+        next_after = max([state["last_update_id"], *(u["update_id"] for u in updates)])
+        if next_after:
+            params["offset"] = next_after + 1
+        resp = requests.get(f"{api}/getUpdates", params=params, timeout=30)
+        resp.raise_for_status()
+        page = resp.json()["result"]
+        updates += page
+        if len(page) < 100:
+            break
     if not updates:
-        print("getUpdates returned nothing. Remember: bots never see posts made by other bots, and only admin bots receive channel posts.")
+        print("getUpdates returned nothing: only posts made after the bot became a channel admin are delivered, and a bot never receives its own posts.")
 
     out = []
     for upd in updates:
@@ -250,13 +257,18 @@ def process(candidates: list[Candidate], state: dict, now: dt.datetime) -> list[
     return new_entries
 
 
-def write_outputs(new_entries: list[dict], label: str) -> None:
-    jsonl = INBOX / f"{label}.jsonl"
-    with jsonl.open("a", encoding="utf-8") as f:
-        for e in new_entries:
-            f.write(json.dumps(e, ensure_ascii=False) + "\n")
-    all_entries = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
-    (INBOX / f"{label}.md").write_text(render_markdown(all_entries, label), encoding="utf-8")
+def write_outputs(new_entries: list[dict], fixed_label: str | None = None) -> None:
+    # Files are keyed by the day the link was shared to the channel (Taipei), unless a fixed label is given.
+    by_label: dict[str, list[dict]] = {}
+    for e in new_entries:
+        by_label.setdefault(fixed_label or e["posted_at"][:10], []).append(e)
+    for label, entries in by_label.items():
+        jsonl = INBOX / f"{label}.jsonl"
+        with jsonl.open("a", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        all_entries = [json.loads(line) for line in jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
+        (INBOX / f"{label}.md").write_text(render_markdown(all_entries, label), encoding="utf-8")
 
 
 def main() -> None:
@@ -270,18 +282,18 @@ def main() -> None:
     state = json.loads(STATE.read_text()) if STATE.exists() else {"last_update_id": 0, "seen": []}
 
     export_path = args.from_export or (Path(os.environ["INBOX_EXPORT"]) if os.environ.get("INBOX_EXPORT", "").strip() else None)
-    label = now.strftime("%Y-%m-%d")
+    fixed_label = None
     if os.environ.get("INBOX_URLS", "").strip():
         candidates = candidates_from_env(now)
     elif export_path:
         candidates = candidates_from_export(export_path, tz)
-        label = f"backfill-{label}"   # keep historical links out of the day's live file
+        fixed_label = f"backfill-{now:%Y-%m-%d}"   # keep historical links out of the live daily files
     else:
         candidates = candidates_from_telegram(state, tz)
 
     new_entries = process(candidates, state, now)
     if new_entries:
-        write_outputs(new_entries, label)
+        write_outputs(new_entries, fixed_label)
 
     state["seen"] = state["seen"][-MAX_SEEN:]
     STATE.write_text(json.dumps(state, indent=1), encoding="utf-8")

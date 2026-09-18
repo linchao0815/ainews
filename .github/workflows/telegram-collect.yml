@@ -2,8 +2,10 @@ name: Telegram link collector
 
 on:
   schedule:
-    # Every 2 hours. Telegram only retains unconfirmed getUpdates results for 24h, so keep this well under a day.
-    - cron: "17 */2 * * *"
+    # 05:30 Taipei: collect the previous day's shares before the 06:00 daily digest Routine reads them.
+    - cron: "30 21 * * *"
+    # 17:30 Taipei safety run: Telegram drops unconfirmed updates after 24h, so one missed run must not lose a day.
+    - cron: "30 9 * * *"
   workflow_dispatch:
     inputs:
       export_path:
