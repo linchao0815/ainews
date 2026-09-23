@@ -80,3 +80,74 @@ Codex CLI/Desktop 本身則是單一 ChatGPT 帳號登入（`codex login`，Plus
 - https://github.com/stablyai/orca/issues/19374
 - https://github.com/stablyai/orca/releases
 - https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan
+
+
+## 六、orchestration 交接機制（handoff）
+
+查證日期：2026-09-23
+來源：https://www.onorca.dev/docs/cli/orchestration
+
+Orca 的 orchestration 是「結構化多代理協調層」，用五個抽象組成：
+
+- **Run**：durable namespace + coordinator 收件匣，只做歸屬追蹤，本身不排程 worker。
+- **Task**：工作項，帶 spec、相依、狀態（pending / ready / dispatched / completed / failed / blocked）。
+- **Dispatch**：一次 task 在某 terminal 上的執行嘗試，握有完成判定與 heartbeat 權威。
+- **Message**：收件匣通訊（狀態更新、dispatch 通知、worker 完成、escalation、提問、heartbeat）。
+- **Decision Gate**：coordinator 持有的問題，未解決前擋住 task 前進。
+
+### 完整所有權交接（full ownership transfer）
+
+典型指令序列（已查證，官方文件列出）：
+
+```
+orca orchestration run-create
+orca orchestration task-create
+orca orchestration worker-start
+orca orchestration check
+orca orchestration send (worker_done)
+```
+
+- 交接發生於 dispatched worker 送出 `worker_done` 且同時帶 `taskId` 與 `dispatchId`；「完成權威來自 active dispatch context」。
+- 完成後 terminal 可：續接後續 task／`worker-release`（封存輸出、關閉 coordinator 持有的 terminal）／`worker-retain`（保留除錯）。
+- `worker-read` 於 release 後取回輸出。
+
+其他關鍵指令：`ask`（worker 請 coordinator 裁決）、`gate-create`／`gate-resolve`（擋/放行 task）、`worker-stop`、`send`（路由訊息，支援 @all / @idle / @claude / @codex）、`check --wait`（輪詢 coordinator 訊息）。
+
+### 脈絡如何跨代理留存
+
+- 脈絡靠 **Dispatch 生命週期**傳遞：worker 收到 preamble 說明如何通訊；`worker_done` 必須同帶 task 與 dispatch ID，防止 stale retry。
+- 另有手動手段 **Continue in New Session**（issue #19374，僅桌面版）：把長 session 搬到新 session 不用重講前情。
+
+## 七、Orca 能否補足 ai-memory 的記憶功能
+
+查證日期：2026-09-23
+來源：https://www.onorca.dev/docs/cli/orchestration、https://github.com/akitaonrails/ai-memory
+
+**結論：不能。Orca 明確沒有持久長期記憶，兩者是互補而非替代。**
+
+官方文件原話：Orca has **no persistent long-term memory**。狀態只存在於三處，且全可被清空：
+
+- per-Run orchestration 狀態（tasks / messages / gates）
+- per-worktree 狀態（terminal 歷史、檔案）
+- runtime-global orchestration 狀態
+
+清除指令：`reset --all` / `reset --tasks` / `reset --messages`。
+
+### 定位對照
+
+| 維度 | Orca orchestration | akitaonrails/ai-memory |
+|---|---|---|
+| 管什麼 | 現在誰在哪個 worktree 做什麼（協調） | 歷史上學到什麼（記憶） |
+| 交接 | 同一份工作換手接管，狀態隨 dispatch 走 | 跨 session／跨機器沉澱知識 |
+| 存續 | Run/worktree 結束或 reset 即消失 | git 版控 markdown，永久保存 |
+| 捕捉 | 手動下 orchestration 指令 | hook 自動捕捉 prompt/tool call |
+
+### 若要補足記憶，可行組合
+
+Orca 負責「執行期的多代理協調與交接」，記憶缺口用下列任一補：
+
+1. **akitaonrails/ai-memory**：自動捕捉沉澱成 git-backed wiki，主打跨 agent／跨機器（原生 Windows 仍 experimental）。
+2. **本 repo 現有 llm-wiki + auto-memory**：`raw/` + `wiki/` 三層 + Stop hook 鏡射，已在 h5protect 運作。
+3. **Orca 內建的手動延續**：worktree comments、Continue in New Session，只在單一工作流內有效，不跨機器、不自動。
+
+給決策者：若已用 llm-wiki + auto-memory，Orca 的交接足以覆蓋「同一工作換手」需求；只有在需要「跨機器、自動捕捉的長期記憶」時，才值得再疊一層 ai-memory。
