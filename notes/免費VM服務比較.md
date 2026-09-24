@@ -30,10 +30,13 @@
 **2026 重大變更**（已查證，多家媒體報導）：
 - A1 額度**砍半**：原本 4 OCPU / 24 GB（3,000 OCPU-hours + 18,000 GB-hours）→ 2 OCPU / 12 GB。Oracle 沒發公告，只改文件（InfoQ、Linuxiac 報導，生效約 2026-06-15）。
 - 2026-08-18 起開始執行：超出額度的純免費帳號 instance 會被停機，要自己 resize 到 2/12 才能開回來。
-- PAYG（綁卡升級）帳號是否適用，Oracle 客服說法互相矛盾——**不確定**。
+- PAYG（綁卡升級）帳號是否適用：官方文件寫「**All tenancies** get the first 1,500 OCPU hours and 9,000 GB hours」，後句才說「For Always Free tenancies, this is equivalent to 2 OCPUs and 12 GB」；InfoQ 報導客服 email 曾回覆 PAYG 可維持 4/24 不收費，但與文件不一致——**以文件為準視為 PAYG 也只有 1,500/9,000 免費額度，超過會計費**。
+- 官方另警告：既有資源一旦 terminate，可能無法再以超出新額度的規格重建（InfoQ 引述）。
 
-**閒置回收規則**（官方）：7 天內 CPU（95 百分位）< 20%、網路 < 20%、記憶體 < 20%（僅 A1）三項**全部**成立 → Oracle 可回收。
-- 對策：跑真正有負載的服務；社群常見做法是升級 PAYG 帳號（不超額仍 $0）以降低被回收風險——**第三方經驗，非官方保證**。
+**閒置回收規則**（官方原文）：「Idle **Always Free** compute instances may be reclaimed by Oracle」——7 天內 CPU（95 百分位）< 20%、網路 < 20%、記憶體 < 20%（僅 A1）三項**全部**成立即可能被回收。
+- 升級 PAYG 能否免除回收：官方文件與 FAQ **都沒有明文保證**，屬社群經驗，不能當事實。
+- 官方 FAQ 另有**帳號層級**規則：「Accounts left idle for 30 days or more may be deemed abandoned and become eligible for suspension or termination」——帳號 30 天不用也可能被停權。
+- 官方 FAQ：Free Trial 期間用 credits 建的付費資源在試用結束後會被回收；標記為 Always Free 的資源不會因試用結束而被回收。
 
 **其他坑**：
 - 熱門地區常「Out of host capacity」開不出 A1，resize 也可能失敗（第三方）。
@@ -42,7 +45,7 @@
 ### Google Cloud（GCP）——最穩但最小
 
 官方（Free Tier 文件）：
-- **1 台 e2-micro**（非 preemptible，每月整月份），共享 vCPU、1 GB RAM
+- **1 台 e2-micro**（非 preemptible，每月整月份）：2 vCPU 但每顆只保證 12.5% CPU 時間（合計 0.25 vCPU），可短暫 burst 到 100% 約 30 秒；1 GB RAM（官方 machine types 文件）
 - 只限 **us-west1（Oregon）、us-central1（Iowa）、us-east1（South Carolina）**
 - 30 GB 標準 persistent disk
 - 流出 **1 GB/月**（北美出發，不含中國、澳洲）——這是最大限制，當網站主機很容易超額
@@ -59,8 +62,8 @@
 - 新帳號（2025-07-15 以後建立）：註冊送 **$100 credits**，完成 5 項任務（開 EC2、設 RDS、建 Lambda、用 Bedrock、設 Budgets 警示，各 $20）再拿 $100，最多 **$200**。
 - Free plan **6 個月或 credits 用完就到期**（先到者），到期後 90 天內升級付費才能恢復帳號。
 - Free plan 只能用部分服務；另有 30+ 項服務永久免費額度（兩種 plan 都有）。
-- 可用機型：t3.micro、t3.small、t4g.micro、t4g.small（第三方整理）。
-- **t4g.small 免費試用延長至 2026-12-31**：每月 750 小時（第三方引述 AWS re:Post 公告；官方原文頁回 403 未能直接讀取）。
+- Free Tier 可用機型（官方 EC2 FAQ）：t3.micro、t3.small、t4g.micro、t4g.small、c7i-flex.large、m7i-flex.large。
+- **t4g.small 免費試用延長至 2026-12-31**（官方 AWS re:Post 公告原文）：「All new and existing AWS customers can utilize the free trial to automatically deduct up to 750 hours per month with the t4g.small instances through December 31, 2026」——新舊客戶都適用，750 小時跨所有地區合計（EC2 FAQ）；超出 baseline 的 surplus CPU credits 要付費。
 - 舊帳號（2025-07-15 前）：維持 12 個月 t2.micro/t3.micro 750 小時的舊制。
 - 注意：EBS、流量、公有 IPv4 位址等周邊資源可能另計費，credits 會被扣。
 
@@ -77,11 +80,11 @@
 
 | 服務 | 免費內容（2026） | 注意 |
 |---|---|---|
-| GitHub Codespaces | GitHub Free 每月 120 core-hours、15 GB 儲存；Pro 180 core-hours、20 GB（官方） | 以核心數計，2-core 機器約 60 小時（推算）；開發環境用途，非常駐主機 |
-| Render | 免費 web service | 閒置 15 分鐘休眠，喚醒 30–60 秒冷啟動（第三方） |
+| GitHub Codespaces | GitHub Free 每月 120 core-hours、15 GB 儲存；Pro 180 core-hours、20 GB（官方） | 官方 changelog：120 core hours＝2-core 機器 60 小時；開發環境用途，非常駐主機 |
+| Render | 免費 web service，每 workspace 每月 750 instance hours（官方） | 閒置 15 分鐘無流量就休眠，喚醒約 1 分鐘；免費 Postgres **30 天後到期**（官方） |
 | Koyeb | **新用戶已無免費方案** | 2026-02 被 Mistral AI 收購，免費 tier 停止對新用戶開放、既有用戶保留（TechCrunch 等） |
-| Fly.io | **已無免費方案** | 第三方 |
-| Northflank | 2 services、2 jobs、1 addon | 第三方 |
+| Fly.io | **無免費方案，只有試用** | 官方：試用 = 2 VM-hours 或 7 天（先到者），機器跑 5 分鐘自動停 |
+| Northflank | Sandbox：2 services、1 database、2 cron jobs，不休眠（官方 pricing） | 規格上限官方未列 |
 | Cloudflare Workers | 10 萬 requests/日 | 非 VM，但跑 API/bot/網站通常比 VM 更適合 |
 
 ## 選擇建議
@@ -100,11 +103,18 @@
 - AWS Free Tier：<https://aws.amazon.com/free/>
 - AWS 2025-07 改制公告：<https://aws.amazon.com/blogs/aws/aws-free-tier-update-new-customers-can-get-started-and-explore-aws-with-up-to-200-in-credits/>
 - Azure 免費服務：<https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/create-free-services>
-- GitHub Codespaces 計費：<https://docs.github.com/en/billing/concepts/product-billing/github-codespaces>
+- Oracle Free Tier FAQ：<https://www.oracle.com/cloud/free/faq/>
+- GCP E2 shared-core 規格：<https://docs.cloud.google.com/compute/docs/general-purpose-machines>
+- AWS EC2 FAQ（Free Tier 機型、T4g 試用）：<https://aws.amazon.com/ec2/faqs/>
+- AWS T4g 試用延長公告：<https://repost.aws/articles/ARi_gf6vo6TuqNtMQdiYPKyA/announcing-amazon-ec2-t4g-free-trial-extension>
+- GitHub Codespaces 計費：<https://docs.github.com/en/billing/concepts/product-billing/github-codespaces>、core hours 說明 <https://github.blog/changelog/2022-11-09-codespaces-for-free-and-pro-accounts/>
+- Render 免費方案：<https://render.com/docs/free>
+- Fly.io 試用：<https://docs.fly.io/about/free-trial/>
+- Northflank 價格：<https://northflank.com/pricing>
 
 第三方：
 - Oracle A1 砍半：<https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/>、<https://linuxiac.com/oracle-quietly-cuts-free-tier-ampere-a1-resources-in-half/>、<https://terminalbytes.com/oracle-cloud-free-tier-changes-2026/>
-- AWS t4g.small 延長：<https://dev.classmethod.jp/en/articles/ec2-t4g-small-free-tier-2026/>、<https://repost.aws/articles/ARi_gf6vo6TuqNtMQdiYPKyA/announcing-amazon-ec2-t4g-free-trial-extension>
+- AWS t4g.small 延長（實測 CUR）：<https://dev.classmethod.jp/en/articles/ec2-t4g-small-free-tier-2026/>
 - AWS 新制機型：<https://repost.aws/questions/QUlaKi-MimTo-3OjekpKMWiA/what-is-correct-for-ec2-free-tier-instance>
 - Koyeb 被收購：<https://techcrunch.com/2026/02/17/mistral-ai-buys-koyeb-in-first-acquisition-to-back-its-cloud-ambitions/>
 - Render／Fly.io／Northflank：<https://snapdeploy.dev/blog/free-cloud-deployment-platforms-2026-comparison>、<https://expresstech.io/7-fly-io-alternatives-in-2026-real-pricing-after-the-free-tier-died/>
