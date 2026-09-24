@@ -51,7 +51,13 @@
 
 ## 風險與事故
 
-- **2024-01-10 資安事件**：資料庫憑證外洩導致未授權存取（HN 討論推測與 Next.js client bundle 誤帶環境變數有關，官方報告被批評根因交代不清）。細節未讀到官方原文，引用前需再查。
+- **2024-01 資安事件**（已查證官方報告）：
+  - 根因：資料庫 API key 被當成環境變數放在 Resend Dashboard 的 **client 端**，外界拿得到。
+  - 時間（UTC）：2023-12-30 攻擊者以外洩 key 取得初始存取；2024-01-07 開始存取資料；01-09 發現異常並從 log 確認；01-10 修補上線並輪替 DB 憑證（停機約 25 分鐘）。
+  - 外洩範圍：2023-11-01 以後的資料，影響所有用戶——收/寄件地址、網域、加密後的 API key、log（狀態碼、method）、contacts、Resend 帳號 email。
+  - 未外洩：信件內文、未加密的 DKIM 私鑰與 API key、使用者密碼。
+  - 善後：移除該環境變數、輪替金鑰、強制 MFA、全組織重設密碼；委託資安公司 Oneleet 調查，並通報執法單位與 GDPR 主管機關。官方表示客戶不需採取行動即可繼續安全寄信。
+- **2024-02-21 全面停擺 12 小時**（已查證官方報告）：工程師在本機跑 DB migration 卻指向 production，把 production 所有資料表 drop 掉；第一次還原又選錯備份時間點。05:01–17:05 UTC 完全無法寄信、呼叫 API、登入 dashboard，另有約 5 分鐘資料永久遺失。
 - **2025-11-18**：受 Cloudflare 大當機波及，寄信中斷約 3 小時。
 - **2026-02-15**：DB 連線耗盡，寄信延遲＋dashboard 無法存取 3 小時 31 分。
 - 共用 IP 的送達率：第三方評測普遍認為 Postmark 最佳；所有業者用 warmed 的 dedicated IP 都可達 95%+。
@@ -70,7 +76,7 @@
 - 小量／原型／AI agent 寄信：Resend 是目前最順手的選擇，免費 3,000 封/月 + 官方 MCP，Claude Code 一行裝外掛即可用。
 - 需要「每個 agent 有自己的信箱」：Resend 不是這種模型，看 AgentMail 類服務。
 - 大量寄送：成本上 SES 仍占優，Resend Scale 方案 250 萬封 $1,150。
-- 可靠性：2024 資安事件與 2026-02 的 3.5 小時中斷值得納入評估；關鍵通知信建議準備備援 provider。
+- 可靠性：2024-01 資安事件（client 端外洩 DB key，屬低級錯誤）、2024-02 誤刪 production DB 造成的 12 小時停擺，以及 2026-02 的 3.5 小時中斷值得納入評估；關鍵通知信建議準備備援 provider。
 
 ## 來源
 
@@ -81,7 +87,8 @@
 - Changelog：<https://resend.com/changelog>
 - 1M users 回顧：<https://resend.com/blog/1-million-users>
 - 事故報告：<https://resend.com/blog/incident-report-for-november-18-2025>、<https://resend.com/blog/incident-report-for-february-15-2026>
-- 2024 資安事件 HN 討論：<https://news.ycombinator.com/item?id=38944146>
+- 2024-01 資安事件官方報告：<https://resend.com/blog/incident-report-for-january-10-2024>（HN 討論：<https://news.ycombinator.com/item?id=38944146>）
+- 2024-02-21 事故報告：<https://resend.com/blog/incident-report-for-february-21-2024>
 - Crunchbase：<https://www.crunchbase.com/organization/resend>
 - 比較評測：<https://www.buildmvpfast.com/blog/resend-vs-ses-vs-postmark-transactional-email-deliverability-saas-2026>、<https://mailtrap.io/blog/transactional-email-services/>
 - AgentMail 比較（競品觀點）：<https://www.agentmail.to/blog/agentmail-vs-resend>
