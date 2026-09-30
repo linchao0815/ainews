@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python tools/sync_memory.py"
+            "command": "python -c \"import os,runpy;runpy.run_path(os.path.join(os.environ.get('CLAUDE_PROJECT_DIR','.'),'tools','sync_memory.py'),run_name='__main__')\""
           }
         ]
       }
