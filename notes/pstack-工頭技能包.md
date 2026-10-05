@@ -5,7 +5,7 @@
 - **加入日期**：2026-10-05
 - **作者**：Lauren Tan（[@poteto](https://github.com/poteto)，前 React Core 成員，現任職 Cursor）
 - **官方版**：[cursor/plugins - pstack](https://github.com/cursor/plugins/tree/main/pstack)（Cursor 外掛，`/add-plugin pstack` 安裝）
-- **Claude Code 社群版**：[TheOnlyFusionCube/potetos-for-everyone](https://github.com/TheOnlyFusionCube/potetos-for-everyone)（自稱取代較早的 `pstack-claude`）
+- **Claude Code 社群版**：[TheOnlyFusionCube/potetos-for-everyone](https://github.com/TheOnlyFusionCube/potetos-for-everyone)（同時支援 Claude Code、Codex、Cursor、Gemini 等，`/plugin marketplace add TheOnlyFusionCube/potetos-for-everyone` 安裝；自稱取代較早、停在 v0.14.8 的 [michael-denyer/pstack-claude](https://github.com/michael-denyer/pstack-claude)）
 
 ---
 
@@ -56,4 +56,5 @@ pstack 明確拒絕把「build 過了」當作完成證據，驗證方式要跟�
 - [A deep dive into pstack - flaviocopes](https://flaviocopes.com/pstack)
 - [cursor/plugins - pstack](https://github.com/cursor/plugins/tree/main/pstack)
 - [potetos-for-everyone README](https://cdn.jsdelivr.net/npm/potetos-for-everyone@0.1.0/README.md)
+- [pstack-claude - skillsllm](https://skillsllm.com/skill/pstack-claude)
 - [React 團隊介紹頁（Lauren Tan）](https://18.react.dev/community/team)

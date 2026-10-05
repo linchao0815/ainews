@@ -45,7 +45,15 @@ Paxel 會讀你本機的 AI coding 對話紀錄並打分數、分類型。官方
 | 方案 | 範圍 | 會不會連網 | 適合用途 |
 |---|---|---|---|
 | **Claude Code 內建 `/insights`** | 只看 Claude Code 最近 30 天（最多約 50 個 session） | 由 Claude 分析，資料只到原本就在用的 Anthropic，不經新第三方；會花用量額度 | 找出常卡住的地方、建議可開的功能、產生可貼進 CLAUDE.md 的規則 |
-| **社群版 [paxel-local](https://github.com/Photobombastic/paxel-local)** | Claude Code、Codex、Cursor、Gemini CLI、opencode、Pi | **不連網**（README 宣稱；使用者已掃原始碼並本機實跑確認） | 想要跟官方類似的類型（archetype）與分數（Execution／Planning／Engineering 各 0–10） |
+| **社群版 [paxel-local](https://github.com/Photobombastic/paxel-local)** | Claude Code、Codex、Cursor、Gemini CLI、opencode、Pi | **不連網**（已驗證，見下） | 想要跟官方類似的類型（archetype）與分數（Execution／Planning／Engineering 各 0–10） |
+
+### paxel-local 不連網的驗證（2026-10-05，commit `762e0d8`）
+
+- **原始碼掃描**：只用 Python 標準庫，沒有 `urllib`、`requests`、`socket`、`http.client` 等網路模組；唯一的外部程式呼叫是本機 `git`（`rev-parse`、`rev-list`、`config`、`log`），沒有 `fetch`/`pull`/`clone`。
+- **實跑攔截**：用 Python audit hook 攔截所有 socket／HTTP 連線後，對本機 1,057 個 session（Claude Code、Codex、Cursor）完整跑一次，**連網嘗試 0 次**，報告正常產出。
+- **報告檔**：產出的 `profile.html` 沒有自動載入任何外部資源，只有 GitHub、X 分享等需要手動點擊的連結。
+- **Windows 注意**：繁中 Windows 預設編碼是 cp950，直接執行會在讀 git 輸出時當掉；要先設 `PYTHONUTF8=1`（PowerShell：`$env:PYTHONUTF8=1; python paxel.py`）。
+- 產出的 `stats.json`、`profile.html` 等含個人資料（姓名、email、專案路徑），不要提交或外傳。
 
 `/insights` 的報告產生在 `~/.claude/usage-data/report.html`，建議每 2–3 週或專案里程碑後跑一次即可。
 

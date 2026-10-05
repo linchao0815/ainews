@@ -38,13 +38,21 @@ Shunt 用 Claude Code 的 `PreToolUse` hook 攔下「讀大檔、寫樣板程式
 - **網路延遲**：每次分流多 10–30 秒。
 - 社群（r/ClaudeAI）質疑這和 Claude Code 內建 Explore agent 把唯讀任務交給較便宜模型的做法差不多。
 
-## 自建替代方案（後端換成 Haiku）
+## 替代方案：後端換成 Haiku 的社群移植版
 
-官方後端綁 Spotify 的付費服務，因此照同樣設計自建一套：
+官方後端綁 Spotify 的付費服務，社群已有多個「同樣三層設計、後端改用 Claude Haiku 4.5」的開源移植，都沿用 Claude Code 既有登入，不需要外部服務。（同仁分享時表示已照此設計自建並在本機使用，細節未經本筆記查證。）
 
-- 保留「hook 攔截大檔讀取 → 交給便宜模型 → 只回傳答案」的架構
-- 後端改用 Claude Code 內建的 Haiku subagent，不需要外部服務或額外帳號
-- 狀態：本機已在使用（使用者自述）
+| 專案 | 攔截範圍 | 安裝 | 授權 |
+|---|---|---|---|
+| [melonkernel/shuntkit](https://github.com/melonkernel/shuntkit) | Read 超過 350 行、`cat`/`less`/`sed` 讀大檔；另有每檔 700 行切片額度 | `uv tool install shuntkit` → `shuntkit install` | Apache-2.0 |
+| [mserranolm/haiku-shunt](https://github.com/mserranolm/haiku-shunt) | Read 超過 350 行、`cat`/`head`/`tail`/`less`/`more` | `claude plugin marketplace add mserranolm/haiku-shunt` | Apache-2.0 |
+| [init-kaushal/skim](https://github.com/init-kaushal/skim) | 過大的 Read、範圍太廣的 Grep、輸出很吵的 Bash | `go install` ＋ `claude plugin install skim@skim` | MIT |
+| [jarvisrchen/claude-shunt](https://github.com/jarvisrchen/claude-shunt) | 大檔讀取與樣板程式碼產生（三層同官方） | 見 README | 見 README |
+
+注意事項（2026-10-05 查詢時）：
+
+- 這些專案都很新，GitHub 星數僅 0–1，**沒有一個公布自己的獨立實測數字**，README 引用的 90% 都是 Spotify 的數據。
+- skim 的 README 坦承：主模型是 Opus 時，長檔第一次讀就回本；檔案只略超過門檻時要再讀約 3 次才回本；**主模型本身就是 Haiku 時幾乎沒有好處，甚至虧本**。
 
 ## 觀察與建議
 
@@ -58,3 +66,7 @@ Shunt 用 Claude Code 的 `PreToolUse` hook 攔下「讀大檔、寫樣板程式
 - [Spotify Portal/Shunt: 90% Claude Code Savings? - explainx.ai](https://explainx.ai/blog/spotify-portal-shunt-claude-code-token-savings-2026)
 - [Spotify Cuts Claude Code Token Usage by 90% - AIM](https://analyticsindiamag.com/ai-news/spotify-cuts-claude-code-token-usage-by-90)
 - [Backstage 定價整理 - devtune.ai](https://devtune.ai/verticals/internal-developer-platforms/backstage/pricing)
+- [melonkernel/shuntkit](https://github.com/melonkernel/shuntkit)
+- [mserranolm/haiku-shunt](https://github.com/mserranolm/haiku-shunt)
+- [init-kaushal/skim](https://github.com/init-kaushal/skim)
+- [jarvisrchen/claude-shunt](https://github.com/jarvisrchen/claude-shunt)
