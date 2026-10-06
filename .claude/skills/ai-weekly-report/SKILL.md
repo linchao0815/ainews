@@ -17,7 +17,7 @@ description: Use when asked to produce, update or verify an AI情報週報 from 
 4. **寫檔**：用 `template.md` 的結構直接寫最終格式（不要先寫舊式縮排格式再轉）。
 5. **查證**：全部條目都查。派 sonnet subagent 平行跑（每個 agent 2-3 條，4 個一批約 2 分鐘），prompt 用 `verify-prompt.md`。結論填入 `> 🔍 **查證**` 引言區塊。
 6. **訂正回寫**：查證發現的核心事實錯誤（金額、版本號、CVE、歸屬）**直接改內文**，並在查證欄註明「ai_news 原文寫 X，實為 Y」。星數差異不改內文，只在查證欄標「查證日 M/D 實際約 N」。
-7. **驗證檔案**：UTF-8 無 BOM、LF、CJK bytes 為 `\xe4`–`\xe9`；`> 🔍 **查證**` 出現次數 = 條目數。
+7. **驗證檔案**：跑 `python .claude/skills/ai-weekly-report/check_report.py AI情報週報/YYYYMMDD.md`，錯誤要清到 0 才算完成（exit 1 = 有錯）。它檢查：UTF-8 無 BOM、LF、無 U+FFFD；每條主推條目有分類標籤、四欄位、恰好一個帶 ✅／⚠️／❌ 的查證欄；頂部總覽表各類條數、引言的「K 則主推條目」與「a 條 ✅、b 條 ⚠️」都和內文實際數字一致；沒有舊式縮排欄位。警告（標題長度、類別配比低於下限）要看過，配比不足就在引言註明原因。改了檢查規則跑 `python .claude/skills/ai-weekly-report/test_check_report.py`。
 8. **文末三張清單**：核心事實訂正、未能獨立確認、ai_news 未報導的重要補充。
 
 ## Quick Reference
