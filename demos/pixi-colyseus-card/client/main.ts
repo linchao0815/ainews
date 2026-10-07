@@ -2,8 +2,12 @@
 import "@pixi/layout";
 import { Application, Assets, CanvasTextMetrics, Container, Graphics, Text } from "pixi.js";
 import { FancyButton } from "@pixi/ui";
-import { sound } from "@pixi/sound";
+// spine-pixi-v8 must be imported before app.init(): importing it registers SpinePipe and
+// the dark-tint batcher as renderer extensions, and a Pixi renderer only collects pipes
+// when it is created (AbstractRenderer._addPipes is private). Lazy-loading it crashed with
+// "reading 'validateRenderable'". @pixi/sound has no such hook, so it is lazy-loaded.
 import { Spine } from "@esotericsoftware/spine-pixi-v8";
+type SoundLib = typeof import("@pixi/sound")["sound"];
 import { gsap } from "gsap";
 import { setup, createActor } from "xstate";
 import { Client, Callbacks } from "@colyseus/sdk";
@@ -97,11 +101,6 @@ function rankName(v: number) {
   });
   document.body.appendChild(app.canvas);
 
-  // ---------- assets: Spine skeleton + sound ----------
-  Assets.add({ alias: "boyData", src: "/assets/spine/spineboy-pro.skel" });
-  Assets.add({ alias: "boyAtlas", src: "/assets/spine/spineboy.atlas" });
-  await Assets.load(["boyData", "boyAtlas"]);
-  sound.add("reveal", "/assets/reveal.wav");
 
   // ---------- layout ----------
   // Player names are user input: wrap the title so a long name can't widen the layout.
@@ -132,11 +131,24 @@ function rankName(v: number) {
   button.layout = { width: 220, height: 64 };
   button.enabled = false;
 
-  const boy = Spine.from({ skeleton: "boyData", atlas: "boyAtlas", scale: 0.22 });
-  boy.state.setAnimation(0, "idle", true);
+  // Fixed-size slot so the layout does not shift when the character arrives later.
   const boyHolder = new Container({ layout: { width: 200, height: 150 } });
-  boy.position.set(100, 145);
-  boyHolder.addChild(boy);
+  let boy: Spine | null = null;
+  let soundLib: SoundLib | null = null;
+  // Started after the first render (see below); failures are recorded, never fatal.
+  const loadExtras = async () => {
+    const { sound } = await import("@pixi/sound");
+    sound.add("reveal", "/assets/reveal.wav");
+    soundLib = sound;
+    Assets.add({ alias: "boyData", src: "/assets/spine/spineboy-pro.skel" });
+    Assets.add({ alias: "boyAtlas", src: "/assets/spine/spineboy.atlas" });
+    await Assets.load(["boyData", "boyAtlas"]);
+    const b = Spine.from({ skeleton: "boyData", atlas: "boyAtlas", scale: 0.22 });
+    b.state.setAnimation(0, "idle", true);
+    b.position.set(100, 145);
+    boyHolder.addChild(b);
+    boy = b;
+  };
 
   // ---------- responsive arrangement (portrait + landscape, safe area) ----------
   // The game is laid out at a design resolution per orientation, then the whole root is
@@ -233,8 +245,8 @@ function rankName(v: number) {
     if (phase === "dealt") actor.send({ type: "DEALT" });
     if (phase === "revealed") {
       actor.send({ type: "REVEALED" });
-      try { sound.play("reveal"); soundPlays++; } catch (e) { errors.push(`sound: ${e}`); }
-      if (room.state.winner === room.sessionId) {
+      try { if (soundLib) { soundLib.play("reveal"); soundPlays++; } } catch (e) { errors.push(`sound: ${e}`); }
+      if (room.state.winner === room.sessionId && boy) {
         boy.state.setAnimation(0, "jump", false);
         boy.state.addAnimation(0, "idle", true, 0);
       }
@@ -271,8 +283,8 @@ function rankName(v: number) {
     }),
     cards: () => ({ me: myCard.debug, opp: oppCard.debug }),
     buttonCenter: () => { const b = button.getBounds(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, enabled: button.enabled }; },
-    spine: () => ({ loaded: !!boy.skeleton, animations: boy.skeleton.data.animations.map((a) => a.name).slice(0, 6), current: boy.state.getTrack(0)?.animation?.name }), // Spine 4.3: getCurrent -> getTrack
-    soundExists: () => sound.exists("reveal"),
+    spine: () => boy ? ({ loaded: !!boy.skeleton, animations: boy.skeleton.data.animations.map((a) => a.name).slice(0, 6), current: boy.state.getTrack(0)?.animation?.name }) : { loaded: false }, // Spine 4.3: getCurrent -> getTrack
+    soundExists: () => soundLib?.exists("reveal") ?? false,
     counters: () => ({ flipCount, soundPlays, lastFlipDuration, reducedMotion }),
     rawSend: (type: string, msg?: unknown) => room.send(type, msg),
     connection: () => ({ leaveCode, drops, reconnects, reconnecting }),
@@ -288,6 +300,8 @@ function rankName(v: number) {
     },
   };
   render();
+  // Game is playable now; fetch the decorative / late-needed modules in the background.
+  loadExtras().catch((e) => { errors.push(`extras: ${e?.stack ?? e}`); console.error(e); });
 })().catch((e) => { errors.push(String(e?.stack ?? e)); console.error(e); });
 
 window.addEventListener("error", (e) => errors.push(`window.error: ${e.message}`));

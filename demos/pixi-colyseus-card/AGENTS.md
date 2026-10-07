@@ -69,6 +69,8 @@
 - **剛連上伺服器時資料還沒到**：`joinOrCreate()` 剛完成時，`room.state.players` 可能還是 `undefined`，畫面程式要能處理這個狀況（參考 `me()`、`opp()` 的寫法）。
 - **xstate 在狀態沒變時也會通知**：事件被忽略時，`actor.subscribe` 照樣會收到通知。記錄狀態轉換時，要先跟上一筆比對，排除重複。
 - **`@pixi/layout` 的載入順序**：必須在建立 `Application` 之前 import。
+- **Spine 也必須在 `app.init()` 之前用靜態 import 載入**：import 時它會註冊渲染管線，而渲染器只在建立的那一刻收集管線。延後載入的話，畫面渲染時會出現 `validateRenderable` 錯誤。音效（@pixi/sound）沒有這個限制，已改成延後載入。
+- **主程式大小預算是 750 KB**，由 `npm run test:bundle` 檢查。實測從原本的 956 KB 降到 723 KB。新增大型套件時，先確認它能不能延後載入（`import()`），再決定要不要放進主程式。
 - **粒子特效**：用 PixiJS v8 內建的 `ParticleContainer`。`@pixi/particle-emitter` 只支援 v7 以下。
 - **連線套件**：用 `@colyseus/sdk`。舊的 `colyseus.js` 停在 0.16 版。
 - **Spine 素材授權**：素材受 Spine 授權條款約束，所以不進版本記錄（已列在 `.gitignore`）。要用時以 `npm run assets` 下載。

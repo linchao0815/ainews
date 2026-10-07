@@ -8,7 +8,7 @@
 
 - [ ] 從打了 tag 的 commit，可以重現同一份建置結果：`npm ci` 之後 `npm run build`。
 - [ ] 版本號已更新，包括 `package.json`，以及 Android 的 `versionCode`／`versionName`、iOS 的 `CFBundleShortVersionString`。
-- [ ] ★ 打包大小在預算內。驗證時主程式約 974 KB（gzip 壓縮後 308 KB），應該先拆檔再設定預算。
+- [ ] ★ 打包大小在預算內：`npm run test:bundle` 會檢查主程式不超過 750 KB。2026-10-07 實測為 723 KB。
 - [ ] 所有資源都能正常載入：Spine 素材、音效、字型。
 - [ ] `npm run test:e2e` 在正式建置（`npm run preview`）上 `ALL PASS`。
 

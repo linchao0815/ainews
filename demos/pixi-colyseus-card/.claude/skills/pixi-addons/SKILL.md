@@ -65,6 +65,12 @@ boy.state.addAnimation(0, "idle", true, 0);     // 上一段動畫播完後，�
 - 動畫名稱不要用猜的，從 `boy.skeleton.data.animations.map(a => a.name)` 讀出實際的清單。
 - `Spine.from` 的 `scale` 是在讀取骨架時就套用的縮放。要在執行中改大小，請另外設定 `boy.scale`。
 - 需要 pixi.js 8.16 以上的版本（套件的 peerDependencies 有寫）。
+- **一定要在 `app.init()` 之前，用靜態 import 載入 `@esotericsoftware/spine-pixi-v8`，不能改成延後載入**（已實測）。原因：
+  - import 這個套件時，它會呼叫 `extensions.add(SpinePipe)`，並註冊 dark-tint batcher。
+  - Pixi 的渲染器只在建立的那一刻收集渲染管線（pipe），對應的 `AbstractRenderer._addPipes` 是私有方法。
+  - 所以渲染器建立之後才 import，畫面渲染時會出現 `Cannot read properties of undefined (reading 'validateRenderable')`。
+  - 素材檔（`.skel`、`.atlas`）可以晚一點再用 `Assets.load` 載入，不受這個限制。
+- @pixi/sound 沒有這個限制，可以用 `await import("@pixi/sound")` 延後載入（參考 `loadExtras()`）。
 - 素材檔放在 `public/assets/spine/`，它不進版本記錄，用 `npm run assets` 下載。
 
 ## 第 5 步：@pixi/sound（音效）

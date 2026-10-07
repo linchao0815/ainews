@@ -63,6 +63,8 @@ try {
   check("B 看不到 A 的牌（資料沒送到 B）", !other(sB, sidB).card, other(sB, sidB).card);
 
   // --- Spine / sound / layout sanity ---
+  // Spine + sound are lazy-loaded after the first render: wait for them (bounded).
+  await waitFor("A", () => window.__demo.spine().loaded && window.__demo.soundExists(), "lazy extras", 10000).catch(() => {});
   const spine = await d("A", () => window.__demo.spine());
   check("Spine 角色載入並播放 idle", spine.loaded && spine.current === "idle", spine);
   check("@pixi/sound 音效已註冊", await d("A", () => window.__demo.soundExists()));
