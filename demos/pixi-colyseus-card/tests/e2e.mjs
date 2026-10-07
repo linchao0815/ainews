@@ -136,7 +136,33 @@ try {
   try { for (const n of ["A", "B"]) await waitFor(n, () => window.__demo.machine() === "revealed" && window.__demo.state().round === 3, "revealed r3", 8000); } catch { r3 = false; }
   check("重連後雙方能完成第 3 局", r3);
 
-  const counters = await d("A", () => window.__demo.counters());
+  // A's page-level counters reset on reload, so snapshot them for the later checks.
+  const countersA = await d("A", () => window.__demo.counters());
+  const transA = await d("A", () => window.__demo.transitions.join(" > "));
+
+  // --- reload: A refreshes the page mid-round and must get its seat back via the stored token ---
+  for (const n of ["A", "B"]) await waitFor(n, () => window.__demo.state().round === 4 && window.__demo.machine() === "myChoice", "round4");
+  const beforeReload = await d("A", () => ({ sid: window.__demo.sessionId, s: window.__demo.state() }));
+  const meBefore = beforeReload.s.players.find((p) => p.sid === beforeReload.sid);
+  await pages.A.reload();
+  let reloadedBack = true;
+  try { await waitFor("A", () => window.__demo?.machine() === "myChoice", "A back after reload", 15000); } catch { reloadedBack = false; }
+  const afterReload = reloadedBack ? await d("A", () => ({ sid: window.__demo.sessionId, s: window.__demo.state(), c: window.__demo.connection() })) : null;
+  const meAfter = afterReload?.s.players.find((p) => p.sid === afterReload.sid);
+  check("重新整理後用同一 sessionId 接回座位", reloadedBack && afterReload.sid === beforeReload.sid && afterReload.c.resumed === true,
+    { before: beforeReload.sid, after: afterReload?.sid, resumed: afterReload?.c?.resumed });
+  check("重新整理後手牌與分數不變", !!meAfter && meAfter.card === meBefore.card && meAfter.score === meBefore.score,
+    { before: [meBefore.card, meBefore.score], after: [meAfter?.card, meAfter?.score] });
+  let bSeesA = true;
+  try { await waitFor("B", () => window.__demo.state().players.length === 2 && window.__demo.state().players.every((p) => p.connected !== false), "B sees A after reload", 8000); } catch { bSeesA = false; }
+  check("A 重新整理後，B 仍在同一局且看到 A 已連線", bSeesA, await d("B", () => window.__demo.state().players.map((p) => [p.name, p.connected])));
+  await clickButton("A");
+  await clickButton("B");
+  let r4 = true;
+  try { for (const n of ["A", "B"]) await waitFor(n, () => window.__demo.machine() === "revealed" && window.__demo.state().round === 4, "revealed r4", 8000); } catch { r4 = false; }
+  check("重新整理後雙方能完成第 4 局", r4);
+
+  const counters = countersA;
   check("GSAP 翻牌動畫有執行", counters.flipCount >= 4, counters);
   check("一般設定下翻牌有動畫（時長 > 0）", counters.lastFlipDuration > 0, counters);
 
@@ -176,7 +202,7 @@ try {
     before !== null && after !== null && after - before <= 2,
     before === null ? `未評估：找不到伺服器日誌 ${SERVER_LOG}` : { before, after });
   check("開牌音效有播放（無例外）", counters.soundPlays >= 2, counters);
-  const trans = await d("A", () => window.__demo.transitions.join(" > "));
+  const trans = transA;
   check("xstate 流程轉換正確", trans.startsWith("connecting > waiting > myChoice > waitingOpponent > revealed > myChoice"), trans);
   for (const n of ["A", "B"]) {
     const appErr = await d(n, () => window.__demo.errors);

@@ -65,12 +65,22 @@ API 的用法看官方 `colyseus` 技能，這裡只寫**本專案自己的規�
 - 斷線用 Playwright 的 `context.setOffline(true)` 模擬。斷網期間，主控台會出現 WebSocket 連線失敗的訊息，這是正常的，因為 SDK 正在重試，e2e 用 `EXPECTED_ERROR` 把它過濾掉。
 - 日誌限流的測試會讀取 `SERVER_LOG`（預設 `logs/server.log`），所以啟動伺服器時，輸出要導向這個檔案。讀不到檔案時，這項測試判為「未評估」，不算通過。
 - **還沒測過**：斷線超過 20 秒、座位被釋放之後的流程。
-- **尚未實作**：關掉分頁或重新整理頁面之後，接回原本的座位。
-  - SDK 的自動重連，只在原本那個頁面還開著的時候有效。
-  - 前端目前沒有保存 `room.reconnectionToken`，所以重新開啟頁面之後，沒辦法呼叫 `client.reconnect(token)` 接回座位。
-  - 結果是伺服器白白保留 20 秒座位，然後才把玩家移除。
-  - 要支援的話，可以把 token 存進 `sessionStorage`，啟動時先嘗試 `client.reconnect(token)`，失敗了再改用 `joinOrCreate`。
-  - 這個問題是 2026-10-07 驗證技能時，由一個全新的對話指出來的。
+- 重新整理頁面的情境，用 `pages.A.reload()` 測試。這項測試刻意排在「斷網後自動重連」之後，用來抓下面第 7 節提到的 token 時序問題。
+
+## 7. 重新整理或重開分頁後接回座位（已實作）
+
+SDK 的自動重連，只在原本那個頁面還開著的時候有效。重新整理或重開分頁時，改由 `client/main.ts` 處理：
+
+- 加入或重連之後，把 `room.reconnectionToken` 存進 **`sessionStorage`**，key 是 `pixi-colyseus-card:reconnectionToken`。
+  - 不用 `localStorage`，是因為 `localStorage` 會被同一個瀏覽器的所有分頁共用。在一個瀏覽器開兩個分頁、分別扮演兩位玩家時，會互相拿到對方的 token，接回對方的座位。
+- 頁面啟動時，如果有存著 token，就先呼叫 `client.reconnect(token)`。失敗時（例如超過 20 秒，或伺服器已經重開），就清掉 token，改用 `joinOrCreate` 重新加入。可以從 `__demo.connection().resumed` 判斷這次是不是接回原座位。
+- 收到 `onLeave` 時，如果關閉代碼是 CONSENTED（4000）、WITH_ERROR（4002）或 FAILED_TO_RECONNECT（4003），代表已經沒有座位可以接回，就清掉 token。
+- **SDK 0.18.5 的時序陷阱（已實測，可在 `@colyseus/sdk/build/Room.mjs` 的 JOIN_ROOM 處理段確認）**：
+  - 伺服器每次 join 或 reconnect，都會在 `_onJoin` 裡**換發新的 token**。
+  - 但 SDK 是**先觸發 `onReconnect`，之後才更新 `room.reconnectionToken`**。
+  - 所以在 `onReconnect` 裡直接讀到的，其實是**已經失效的舊 token**。
+  - 實際症狀：先自動重連過一次，再重新整理頁面，伺服器會回報 `reconnection token invalid or expired`，玩家拿到一個新的 sessionId。
+  - 解法：在 `onReconnect` 裡改用 `queueMicrotask(() => save(room.reconnectionToken))`，等 SDK 更新完再存；另外在 `pagehide` 事件時再存一次。
 
 ## 完成條件
 

@@ -10,7 +10,7 @@ import { Spine } from "@esotericsoftware/spine-pixi-v8";
 type SoundLib = typeof import("@pixi/sound")["sound"];
 import { gsap } from "gsap";
 import { setup, createActor } from "xstate";
-import { Client, Callbacks } from "@colyseus/sdk";
+import { Client, Callbacks, CloseCode } from "@colyseus/sdk";
 
 const params = new URLSearchParams(location.search);
 const NAME = params.get("name") ?? "玩家";
@@ -206,12 +206,36 @@ function rankName(v: number) {
   window.addEventListener("resize", arrange);
 
   // ---------- networking ----------
+  // Resume after a reload / reopened tab: the server holds a dropped seat for 20 s, and the
+  // reconnection token lets this page claim it. sessionStorage (not localStorage) so two tabs
+  // of the same browser can never resume each other's seat.
+  const TOKEN_KEY = "pixi-colyseus-card:reconnectionToken";
+  const storage = {
+    get: () => { try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; } },
+    set: (v: string) => { try { sessionStorage.setItem(TOKEN_KEY, v); } catch { /* private mode etc. */ } },
+    clear: () => { try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } },
+  };
   const client = new Client(SERVER);
-  const room = await client.joinOrCreate("card", { name: NAME });
+  let resumed = false;
+  let room: Awaited<ReturnType<typeof client.joinOrCreate>>;
+  const saved = storage.get();
+  try {
+    if (!saved) throw new Error("no saved seat");
+    room = await client.reconnect(saved);
+    resumed = true;
+  } catch {
+    storage.clear(); // expired or never existed: start a fresh seat
+    room = await client.joinOrCreate("card", { name: NAME });
+  }
+  storage.set(room.reconnectionToken);
   actor.send({ type: "JOINED" });
   let leaveCode: number | null = null;
   let drops = 0, reconnects = 0, reconnecting = false;
-  room.onLeave((code: number) => { leaveCode = code; });
+  room.onLeave((code: number) => {
+    leaveCode = code;
+    // Consented leave or a rejected/expired seat: nothing left to resume.
+    if (code === CloseCode.CONSENTED || code === CloseCode.WITH_ERROR || code === CloseCode.FAILED_TO_RECONNECT) storage.clear();
+  });
   // 0.18 standard callbacks API (see .claude/skills/colyseus/SKILL.md "State callbacks").
   const callbacks = Callbacks.get(room);
 
@@ -239,7 +263,15 @@ function rankName(v: number) {
 
   // 0.18 reconnection: the SDK retries on the same Room instance; callbacks stay attached.
   room.onDrop(() => { drops++; reconnecting = true; render(); });
-  room.onReconnect(() => { reconnects++; reconnecting = false; render(); });
+  // @colyseus/sdk 0.18.5 invokes onReconnect *before* it assigns the new reconnectionToken
+  // (Room.mjs JOIN_ROOM handler), and the server rotates the token on every (re)join, so the
+  // token read synchronously here is already invalid. Save it after the current task.
+  room.onReconnect(() => {
+    reconnects++; reconnecting = false; render();
+    queueMicrotask(() => storage.set(room.reconnectionToken));
+  });
+  // Belt and braces: persist whatever token is current when the page goes away (reload/close).
+  window.addEventListener("pagehide", () => storage.set(room.reconnectionToken));
 
   callbacks.listen("phase", (phase: string) => {
     if (phase === "dealt") actor.send({ type: "DEALT" });
@@ -287,7 +319,7 @@ function rankName(v: number) {
     soundExists: () => soundLib?.exists("reveal") ?? false,
     counters: () => ({ flipCount, soundPlays, lastFlipDuration, reducedMotion }),
     rawSend: (type: string, msg?: unknown) => room.send(type, msg),
-    connection: () => ({ leaveCode, drops, reconnects, reconnecting }),
+    connection: () => ({ leaveCode, drops, reconnects, reconnecting, resumed }),
     // Consented leave (CloseCode.CONSENTED): skips onDrop, so the server frees the seat
     // immediately instead of holding it for reconnection. Tests call this before closing.
     leave: () => room.leave(),
