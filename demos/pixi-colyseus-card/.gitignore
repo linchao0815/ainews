@@ -5,3 +5,4 @@ ios/
 logs/
 public/assets/
 dist-prod/
+dist-env/

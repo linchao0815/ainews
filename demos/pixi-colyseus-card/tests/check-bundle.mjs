@@ -44,4 +44,12 @@ const entryKB = entry ? fs.statSync(path.join(OUT, entry)).size / 1024 : Infinit
 const ok = entryKB <= ENTRY_BUDGET_KB;
 console.log(`${ok ? "PASS" : "FAIL"}  主程式 ${entry} ${entryKB.toFixed(0)} KB（預算 ${ENTRY_BUDGET_KB} KB）`);
 if (!ok) failed = true;
+
+// Build-time server URL (Capacitor apps have no address bar for ?server=): a build with
+// VITE_SERVER_URL must embed that endpoint.
+const PROBE_URL = "wss://server-url-probe.invalid:7443";
+execSync(`npx vite build --outDir dist-env --emptyOutDir`, { stdio: "ignore", env: { ...process.env, VITE_SERVER_URL: PROBE_URL } });
+const envHit = fs.readdirSync(path.join("dist-env", "assets")).some((f) => f.endsWith(".js") && fs.readFileSync(path.join("dist-env", "assets", f), "utf8").includes(PROBE_URL));
+console.log(`${envHit ? "PASS" : "FAIL"}  VITE_SERVER_URL 會寫入打包結果（${PROBE_URL}）`);
+if (!envHit) failed = true;
 process.exit(failed ? 1 : 0);

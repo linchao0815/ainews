@@ -64,14 +64,20 @@ API 的用法看官方 `colyseus` 技能，這裡只寫**本專案自己的規�
 - 作弊情境用 `window.__demo.rawSend(type, payload)` 送出。格式錯誤要測「會被踢掉」：`leaveCode === 4002`，而且對手會回到 waiting。
 - 斷線用 Playwright 的 `context.setOffline(true)` 模擬。斷網期間，主控台會出現 WebSocket 連線失敗的訊息，這是正常的，因為 SDK 正在重試，e2e 用 `EXPECTED_ERROR` 把它過濾掉。
 - 日誌限流的測試會讀取 `SERVER_LOG`（預設 `logs/server.log`），所以啟動伺服器時，輸出要導向這個檔案。讀不到檔案時，這項測試判為「未評估」，不算通過。
-- **還沒測過**：斷線超過 20 秒、座位被釋放之後的流程。
+- **座位逾時釋放**由 e2e 測試涵蓋，做法如下：
+  - 測試會用 `node --import tsx server/index.ts` 另外啟動一台伺服器，設定 `PORT=2568`、`RECONNECT_SECONDS=2`。
+  - 頁面用 `?server=ws://localhost:2568` 連到這台伺服器。
+  - 測試先等超過 5 秒（SDK 的 minUptime），才讓玩家斷網，否則這次斷線不會被當成真正的斷線。
+  - 預期結果：對手回到 waiting；斷線玩家重新整理後，舊 token 接不回座位，會改成重新加入，拿到新的 sessionId。
+- 保留秒數由環境變數 `RECONNECT_SECONDS` 設定，預設 20 秒。伺服器的 port 由 `PORT` 設定，預設 2567。
 - 重新整理頁面的情境，用 `pages.A.reload()` 測試。這項測試刻意排在「斷網後自動重連」之後，用來抓下面第 7 節提到的 token 時序問題。
 
 ## 7. 重新整理或重開分頁後接回座位（已實作）
 
 SDK 的自動重連，只在原本那個頁面還開著的時候有效。重新整理或重開分頁時，改由 `client/main.ts` 處理：
 
-- 加入或重連之後，把 `room.reconnectionToken` 存進 **`sessionStorage`**，key 是 `pixi-colyseus-card:reconnectionToken`。
+- 加入或重連之後，把 `room.reconnectionToken` 存進 **`sessionStorage`**，key 是 **`${GAME_ID}:reconnectionToken`**（本遊戲是 `high-card:reconnectionToken`）。
+  - **每款遊戲都必須有自己的 GAME_ID**。如果多款遊戲放在同一個網域，又共用同一個 key，就會拿到別款遊戲的 token 去重連。
   - 不用 `localStorage`，是因為 `localStorage` 會被同一個瀏覽器的所有分頁共用。在一個瀏覽器開兩個分頁、分別扮演兩位玩家時，會互相拿到對方的 token，接回對方的座位。
 - 頁面啟動時，如果有存著 token，就先呼叫 `client.reconnect(token)`。失敗時（例如超過 20 秒，或伺服器已經重開），就清掉 token，改用 `joinOrCreate` 重新加入。可以從 `__demo.connection().resumed` 判斷這次是不是接回原座位。
 - 收到 `onLeave` 時，如果關閉代碼是 CONSENTED（4000）、WITH_ERROR（4002）或 FAILED_TO_RECONNECT（4003），代表已經沒有座位可以接回，就清掉 token。

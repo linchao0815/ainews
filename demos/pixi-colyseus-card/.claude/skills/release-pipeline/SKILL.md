@@ -20,6 +20,15 @@ description: "本專案的打包、套件、CI 與發佈規則：測試掛鉤 wi
 - **Spine 不能延後載入**，原因見 `pixi-addons` 技能。只要套件在 import 時就會註冊渲染器擴充（renderer pipe、batcher），一律要在 `app.init()` 之前用靜態 import 載入。
 - 預算只有在「延後載入確實不可行」時才能調整，而且要把原因寫進 `tests/check-bundle.mjs` 的註解。不可以為了通過檢查，悄悄把數字改大。
 
+## 2.5 伺服器位址在建置時指定
+
+- 前端決定伺服器位址的優先順序如下：
+  1. `?server=` 網址參數（開發與測試用）
+  2. `VITE_SERVER_URL`（建置時的環境變數）
+  3. 都沒有時，使用同一個主機的 2567 port
+- **打包成 Capacitor App 時，一定要設定 `VITE_SERVER_URL`**，例如 `wss://game.example.com`。原因是 App 沒有網址列，無法帶 `?server=` 參數。
+- `npm run test:bundle` 會用一個測試用的 `VITE_SERVER_URL` 另外打包一次（輸出到 `dist-env/`），確認這個位址真的有寫進打包結果。
+
 ## 3. 套件與 package-lock
 
 - **`package-lock.json` 要用新版 npm 產生**：

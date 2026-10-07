@@ -27,7 +27,11 @@ export const CardState = schema({
 const log = (...a: unknown[]) => console.log("[server]", ...a);
 
 // How long a dropped player's seat (hand, score) is held before onLeave removes it.
-const RECONNECT_SECONDS = 20;
+// Default 20 s; RECONNECT_SECONDS env lets tests exercise seat release without a 20 s wait.
+const RECONNECT_SECONDS = (() => {
+  const v = Number(process.env.RECONNECT_SECONDS);
+  return Number.isFinite(v) && v > 0 ? v : 20;
+})();
 
 // REJECT logging is rate-limited per (player, reason): at most one line per window,
 // later lines report how many were suppressed. Stops a client from flooding the logs.

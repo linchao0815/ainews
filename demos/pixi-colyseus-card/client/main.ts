@@ -14,7 +14,11 @@ import { Client, Callbacks, CloseCode } from "@colyseus/sdk";
 
 const params = new URLSearchParams(location.search);
 const NAME = params.get("name") ?? "玩家";
-const SERVER = params.get("server") ?? `ws://${location.hostname}:2567`;
+// Identifies this game in shared browser storage (several games may run on one origin).
+const GAME_ID = "high-card";
+// Server endpoint: ?server= (dev/tests) > VITE_SERVER_URL (set at build time; Capacitor
+// apps have no address bar) > same host, port 2567.
+const SERVER = params.get("server") ?? import.meta.env.VITE_SERVER_URL ?? `ws://${location.hostname}:2567`;
 
 const errors: string[] = [];
 const transitions: string[] = [];
@@ -209,7 +213,7 @@ function rankName(v: number) {
   // Resume after a reload / reopened tab: the server holds a dropped seat for 20 s, and the
   // reconnection token lets this page claim it. sessionStorage (not localStorage) so two tabs
   // of the same browser can never resume each other's seat.
-  const TOKEN_KEY = "pixi-colyseus-card:reconnectionToken";
+  const TOKEN_KEY = `${GAME_ID}:reconnectionToken`;
   const storage = {
     get: () => { try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; } },
     set: (v: string) => { try { sessionStorage.setItem(TOKEN_KEY, v); } catch { /* private mode etc. */ } },
