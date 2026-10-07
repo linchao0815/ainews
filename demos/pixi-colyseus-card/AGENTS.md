@@ -51,6 +51,12 @@
 
 失敗時，可以在該次執行的 artifact 下載 `logs/`（截圖和伺服器日誌）。新增測試指令時，記得把它加進這個 workflow。
 
+**`package-lock.json` 要用新版 npm 產生**（例如 `npx npm@latest install`）。原因如下：
+- CI 用的是 Node 24 最新版附帶的 npm，對「選用依賴底下的同伴依賴」檢查比較嚴格。
+- 這個專案的依賴鏈是：`@pixi/layout` 的選用依賴 `@pixi/react`，它的同伴依賴是 `react`。
+- 用舊版 npm 11.6.2 產生的鎖定檔裡沒有 `react`，CI 上的 `npm ci` 就會報 `Missing: react@19.3.0 from lock file` 而失敗。
+- 換套件之後，先用 `npx npm@latest ci` 在本機試裝一次，確認沒問題再 push。
+
 ## 測試紀律
 
 - **修 bug 時，先寫一個能重現 bug 的 `check(...)`，親眼看到它失敗，再去修程式。** 新增功能也照這個順序，先寫檢查項目再實作。沒看過失敗的測試，可能根本沒有在檢查你以為它在檢查的東西。
