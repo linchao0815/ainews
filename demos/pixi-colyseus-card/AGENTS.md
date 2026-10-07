@@ -11,8 +11,9 @@
 - **發牌、判定勝負、計分只寫在 `server/CardRoom.ts`。**
 - **前端只做兩件事**：把 `room.state` 畫出來，以及用 `room.send()` 送出玩家的意圖。目前唯一的意圖是 `ready`。
 - **私密資料的寫法**：在 schema 欄位加上 `.view()`，再到 `onJoin` 裡呼叫 `client.view.add(該玩家)`。這樣資料只會傳給擁有者，其他人的瀏覽器裡根本收不到。
-- **新增訊息類型時**：在 `onMessage` 裡先檢查兩件事——目前是哪個遊戲階段（`state.phase`），以及送訊息的是誰。不合法的請求，用 `log("REJECT ...")` 記下來後直接 return。
-- **Schema 一律用 builder 語法**（`schema({...})`、`t.number()`），不使用裝飾器，所以 TypeScript 不需要另外設定。
+- **新增訊息類型時**：加在 `CardRoom` 的 `messages = {...}` 裡（0.18 的宣告式寫法）。處理函式先檢查兩件事——目前是哪個遊戲階段（`state.phase`），以及送訊息的是誰（用 `client` 參數判斷，不採信訊息內容裡附帶的 sessionId）。不合法的請求，用 `log("REJECT ...")` 記下來後直接 return。
+- **Schema 一律用 builder 語法**（`schema({...})`、`t.number()`），型別用 `SchemaType<typeof X>`。不使用裝飾器，所以 TypeScript 不需要另外設定。
+- **前端監聽狀態用 `Callbacks.get(room)`**，例如 `callbacks.listen("phase", fn)`、`callbacks.onAdd("players", fn)`。
 
 ## 開發流程
 
@@ -40,6 +41,16 @@
 - **連線套件**：用 `@colyseus/sdk`。舊的 `colyseus.js` 停在 0.16 版。
 - **Spine 素材授權**：素材受 Spine 授權條款約束，所以不進版本記錄（已列在 `.gitignore`）。要用時以 `npm run assets` 下載。
 - **檔案格式**：文字檔用 UTF-8（不加 BOM）、Windows 換行（CRLF）。這個 repo 有設定 `core.autocrlf=true`。暫時的輸出一律放 `logs/`，這個資料夾不會進版本記錄。
+
+## 專案內的技能（`.claude/skills/`）
+
+這裡放的是兩家官方的技能包，版本都對得上本專案。Claude Code 會自動載入；其他 agent 請在對應任務開始前，直接讀取該技能的 `SKILL.md`。
+
+- **寫或修改 Room、Schema、前端狀態同步、重新連線的程式之前**：讀 `.claude/skills/colyseus/SKILL.md`。這是 Colyseus 官方技能，對應 0.18 版。需要細節時，依它的指引查 `references/` 裡的對應段落。
+- **任何 PixiJS v8 的工作**：從 `.claude/skills/pixijs/SKILL.md`（總入口）開始，它會指引你該讀哪個子技能。本專案只收錄了 26 個子技能中的 14 個；入口技能連到的子技能如果不存在，照它自己的備援規則查 `https://pixijs.download/release/docs/llms.txt`。
+- **技能裡沒有的套件**：@pixi/ui、@pixi/layout、@pixi/sound、spine-pixi-v8、gsap、xstate、Capacitor 都沒有技能。這些套件的規則以本文件為準。
+- **技能和本文件衝突時，以本文件與實測結果為準**。目前已知一處：Colyseus 技能說 `getStateCallbacks` 已經移除，但它在 `@colyseus/sdk` 0.18.5 仍然存在，只是不再推薦使用。本專案統一用 `Callbacks.get`。
+- **技能的來源與更新方式**：見 `.claude/VENDORED-SKILLS.md`。技能內容一律照原樣保存，本專案特有的規則寫在本文件。
 
 ## 背景資料
 

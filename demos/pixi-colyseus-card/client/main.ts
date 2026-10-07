@@ -6,7 +6,7 @@ import { sound } from "@pixi/sound";
 import { Spine } from "@esotericsoftware/spine-pixi-v8";
 import { gsap } from "gsap";
 import { setup, createActor } from "xstate";
-import { Client, getStateCallbacks } from "@colyseus/sdk";
+import { Client, Callbacks } from "@colyseus/sdk";
 
 const params = new URLSearchParams(location.search);
 const NAME = params.get("name") ?? "玩家";
@@ -122,7 +122,8 @@ function rankName(v: number) {
   const client = new Client(SERVER);
   const room = await client.joinOrCreate("card", { name: NAME });
   actor.send({ type: "JOINED" });
-  const $ = getStateCallbacks(room);
+  // 0.18 standard callbacks API (see .claude/skills/colyseus/SKILL.md "State callbacks").
+  const callbacks = Callbacks.get(room);
 
   // The first full state may not have arrived yet right after joinOrCreate().
   const me = () => room.state.players?.get(room.sessionId);
@@ -143,7 +144,7 @@ function rankName(v: number) {
     } as Record<string, string>)[String(st)] ?? String(st);
   };
 
-  $(room.state).listen("phase", (phase: string) => {
+  callbacks.listen("phase", (phase: string) => {
     if (phase === "dealt") actor.send({ type: "DEALT" });
     if (phase === "revealed") {
       actor.send({ type: "REVEALED" });
@@ -156,9 +157,9 @@ function rankName(v: number) {
     if (phase === "waiting") actor.send({ type: "OPP_LEFT" });
     render();
   });
-  $(room.state).players.onAdd((p: object) => { $(p).onChange(render); render(); });
-  $(room.state).players.onRemove(render);
-  $(room.state).listen("round", render);
+  callbacks.onAdd("players", (p: object) => { callbacks.onChange(p, render); render(); });
+  callbacks.onRemove("players", render);
+  callbacks.listen("round", render);
 
   button.onPress.connect(() => {
     if (actor.getSnapshot().value !== "myChoice") return;

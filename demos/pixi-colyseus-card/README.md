@@ -32,6 +32,11 @@
   - `set_card`：玩家自己改牌
   - 重複送出 `ready`
 
+## AI agent 開發
+
+- 開發規則和已知的坑寫在 [AGENTS.md](AGENTS.md)。`CLAUDE.md` 會引用它，所以 Claude Code 也會讀到。
+- `.claude/skills/` 收錄了 Colyseus 和 PixiJS 的官方 agent 技能，都是對應本專案版本的。來源與更新方式見 [.claude/VENDORED-SKILLS.md](.claude/VENDORED-SKILLS.md)。
+
 ## 執行方式
 
 ```powershell

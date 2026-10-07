@@ -1,5 +1,5 @@
 import { Room, type Client } from "colyseus";
-import { schema, t, StateView } from "@colyseus/schema";
+import { schema, t, StateView, type SchemaType } from "@colyseus/schema";
 
 // Public fields go to everyone; `card` is private (.view()) and only reaches
 // clients whose StateView contains this player instance (= the owner).
@@ -11,7 +11,7 @@ export const Player = schema({
   shownCard: t.number(),       // 0 until reveal, then copied from `card`
   card: t.number().view(),     // private hand
 }, "Player");
-type PlayerT = InstanceType<typeof Player>;
+type PlayerT = SchemaType<typeof Player>;
 
 export const CardState = schema({
   phase: t.string(),           // waiting | dealt | revealed
@@ -26,12 +26,9 @@ export class CardRoom extends Room {
   maxClients = 2;
   state = new CardState();
 
-  onCreate() {
-    this.state.phase = "waiting";
-    this.state.round = 0;
-    this.state.winner = "";
-
-    this.onMessage("ready", (client) => {
+  // Declarative message map: the primary 0.18 API (see .claude/skills/colyseus/SKILL.md).
+  messages = {
+    ready: (client: Client) => {
       const p = this.state.players.get(client.sessionId) as PlayerT | undefined;
       if (!p) return;
       if (this.state.phase !== "dealt") {
@@ -45,15 +42,20 @@ export class CardRoom extends Room {
       p.ready = true;
       log(`ready ${p.name} (round ${this.state.round})`);
       if ([...this.state.players.values()].every((x: PlayerT) => x.ready)) this.reveal();
-    });
-
+    },
     // Cheat attempts: the client never decides outcomes or cards.
-    this.onMessage("claim_win", (client) => {
+    claim_win: (client: Client) => {
       log(`REJECT claim_win from ${this.nameOf(client)}: outcome is server-authoritative`);
-    });
-    this.onMessage("set_card", (client, value) => {
+    },
+    set_card: (client: Client, value: unknown) => {
       log(`REJECT set_card(${JSON.stringify(value)}) from ${this.nameOf(client)}: cards are dealt by server`);
-    });
+    },
+  };
+
+  onCreate() {
+    this.state.phase = "waiting";
+    this.state.round = 0;
+    this.state.winner = "";
   }
 
   onJoin(client: Client, options: { name?: string }) {
