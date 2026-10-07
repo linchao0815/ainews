@@ -185,7 +185,10 @@ function rankName(v: number) {
   });
 
   // ---------- test hooks (read-only views + raw send for cheat tests) ----------
-  (window as any).__demo = {
+  // Only in `vite` dev and `vite build --mode e2e`. In a production build this whole
+  // branch is a constant-false and is removed, so the shipped bundle contains no hook
+  // (checked by `npm run test:bundle`).
+  if (import.meta.env.DEV || import.meta.env.MODE === "e2e") (window as any).__demo = {
     name: NAME,
     sessionId: room.sessionId,
     machine: () => String(actor.getSnapshot().value),

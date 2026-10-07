@@ -26,7 +26,10 @@
 3. **實作改動。**
 4. **補測試**：新增的每一條規則或功能，都要在 `tests/e2e.mjs` 加一筆 `check(...)`。作弊情境用 `window.__demo.rawSend()` 模擬。
 5. **執行 `npm run test:e2e`**。完成條件：最後一行印出 `ALL PASS`。如果改動影響畫面，還要看 `logs/e2e/*.png` 截圖確認。
-6. **測正式版（改到打包或資源載入時才需要）**：執行 `npm run build`，在背景執行 `npm run preview`（port 4173），再設定 `BASE=http://localhost:4173` 跑一次 `npm run test:e2e`。完成條件：`ALL PASS`。
+6. **測打包後的版本（改到打包或資源載入時才需要）**：
+   - 先執行 `npm run build:e2e`（e2e 模式，會保留測試掛鉤），再於背景執行 `npm run preview`（port 4173），然後設定 `BASE=http://localhost:4173` 跑一次 `npm run test:e2e`。
+   - 接著執行 `npm run test:bundle`，確認正式版打包裡沒有測試掛鉤。
+   - 完成條件：兩者都印出 PASS。
 7. **收尾**：把 2567、5173、4173 三個 port 上的程序全部結束。
 
 ## 測試紀律
@@ -44,6 +47,8 @@
 `tests/e2e.mjs` 完全靠 `client/main.ts` 裡的 `window.__demo` 來讀取遊戲狀態，包括：`machine()`、`state()`、`cards()`、`buttonCenter()`、`spine()`、`counters()`、`rawSend()`。
 
 重構時這些介面要保持相容。如果真的要改，同一個改動裡一併更新測試。
+
+`window.__demo` 只會在兩種情況下出現：`vite` 開發模式（`import.meta.env.DEV`），以及 `vite build --mode e2e`。一般的 `npm run build` 會把整段移除。新增測試掛鉤時，要放在同一個 `if` 判斷式裡面，並確認 `npm run test:bundle` 仍然通過。
 
 ## 已知的坑
 

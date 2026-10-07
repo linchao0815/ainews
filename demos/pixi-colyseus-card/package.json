@@ -9,7 +9,9 @@
     "build": "vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "test:e2e": "node tests/e2e.mjs",
-    "cap:android": "npx cap add android && npx cap sync android"
+    "cap:android": "npx cap add android && npx cap sync android",
+    "test:bundle": "node tests/check-bundle.mjs",
+    "build:e2e": "vite build --mode e2e"
   },
   "license": "UNLICENSED",
   "type": "module",

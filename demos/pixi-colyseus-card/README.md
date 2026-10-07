@@ -58,9 +58,12 @@ npm run dev
 
 ```powershell
 npm run test:e2e                                  # 測開發版（localhost:5173）
-npm run build; npm run preview                    # 打包正式版，在 localhost:4173 提供
+npm run build:e2e; npm run preview                # 用 e2e 模式打包（保留測試掛鉤），在 localhost:4173 提供
 $env:BASE = "http://localhost:4173"; npm run test:e2e
+npm run test:bundle                               # 確認一般正式版打包不含測試掛鉤
 ```
+
+伺服器的輸出要導到 `logs/server.log`，日誌頻率限制那一項檢查才讀得到（可以用環境變數 `SERVER_LOG` 指定其他路徑），例如 `npm run server > logs/server.log`。讀不到這個檔案時，該項會判為「未評估」，不會當作通過。
 
 產生 Android 專案：
 
