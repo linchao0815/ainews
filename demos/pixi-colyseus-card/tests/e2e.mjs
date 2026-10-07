@@ -4,6 +4,8 @@ import fs from "node:fs";
 
 const BASE = process.env.BASE ?? "http://localhost:5173";
 const OUT = "logs/e2e";
+// The server's stdout must be redirected here for the log rate-limit check.
+const SERVER_LOG = process.env.SERVER_LOG ?? "logs/server.log";
 fs.mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const report = { checks: [], pass: true };
@@ -121,6 +123,28 @@ try {
   for (const n of ["C", "D"]) await waitFor(n, () => window.__demo?.machine() === "myChoice", "myChoice (reduced motion)");
   const cC = await d("C", () => window.__demo.counters());
   check("減少動態效果時翻牌立即完成（時長 = 0）", cC.lastFlipDuration === 0, cC);
+
+  // --- malformed payload: schema validation must drop the sender (CloseCode.WITH_ERROR = 4002) ---
+  await d("C", () => window.__demo.rawSend("set_card", "not-a-number"));
+  let kicked = true;
+  try { await waitFor("C", () => window.__demo.connection?.().leaveCode != null, "C leaveCode", 5000); } catch { kicked = false; }
+  const connC = kicked ? await d("C", () => window.__demo.connection()) : null;
+  check("格式錯誤的訊息會讓送出者被踢出（WITH_ERROR 4002）", kicked && connC.leaveCode === 4002, connC);
+  let dWaiting = true;
+  try { await waitFor("D", () => window.__demo.machine() === "waiting", "D waiting", 5000); } catch { dWaiting = false; }
+  check("對手被踢出後，另一方回到等待狀態", dWaiting, await d("D", () => window.__demo.machine()));
+
+  // --- REJECT log rate limit: a 50-message burst may add at most 2 log lines ---
+  const countRejects = () => fs.existsSync(SERVER_LOG)
+    ? fs.readFileSync(SERVER_LOG, "utf8").split("\n").filter((l) => l.includes("REJECT claim_win from A")).length
+    : null;
+  const before = countRejects();
+  await d("A", () => { for (let i = 0; i < 50; i++) window.__demo.rawSend("claim_win"); });
+  await sleep(800);
+  const after = countRejects();
+  check("連續 50 筆作弊訊息，REJECT 日誌最多增加 2 行（頻率限制）",
+    before !== null && after !== null && after - before <= 2,
+    before === null ? `未評估：找不到伺服器日誌 ${SERVER_LOG}` : { before, after });
   check("開牌音效有播放（無例外）", counters.soundPlays >= 2, counters);
   const trans = await d("A", () => window.__demo.transitions.join(" > "));
   check("xstate 流程轉換正確", trans.startsWith("connecting > waiting > myChoice > waitingOpponent > revealed > myChoice"), trans);

@@ -15,7 +15,8 @@
 - **伺服器端從 `@colyseus/core` 和 `@colyseus/ws-transport` import**，不使用 `colyseus` 這個整合套件。整合套件會把 `@colyseus/auth` → `grant` → `elliptic`／`uuid` 一起裝進來，這幾個都有 npm audit 回報的漏洞，而本專案根本用不到登入功能。`colyseus` 技能的範例寫的是 `from "colyseus"`，照抄時要改成 `@colyseus/core`。
 - **Schema 一律用 builder 語法**（`schema({...})`、`t.number()`），型別用 `SchemaType<typeof X>`。不使用裝飾器，所以 TypeScript 不需要另外設定。
 - **前端監聽狀態用 `Callbacks.get(room)`**，例如 `callbacks.listen("phase", fn)`、`callbacks.onAdd("players", fn)`。
-- **REJECT 日誌要限制頻率**：正式上線前，同一個玩家同一種被拒絕的訊息，要合併記錄或限制記錄頻率，避免有人刻意大量送錯誤訊息，把日誌灌爆。
+- **拒絕請求時，一律呼叫 `logReject(sessionId, 原因, 訊息)`**，不要直接用 `log("REJECT ...")`。`logReject` 會限制記錄頻率：同一位玩家、同一種原因，5 秒內只寫一行，被略過的次數會附在下一行裡。這是為了避免有人狂送作弊訊息把日誌灌爆。實測連送 50 筆，日誌只多 1 行。
+- **有內容的訊息，要用 `validate(zod 格式, 處理函式)` 檢查格式**，寫法參考 `set_card`。格式不符的訊息不會進到處理函式，Colyseus 會直接把送出的玩家踢出房間，斷線代碼是 `4002`（WITH_ERROR）。正常的前端不可能送出格式錯誤的訊息，所以這樣處理是合理的。沒有內容的訊息（例如 `ready`）不需要驗證。
 - **斷線重連要分清楚兩種情況**：玩家只是暫時斷線，在 `onDrop` 裡處理（呼叫 `allowReconnection`）；玩家真的離開了，才在 `onLeave` 裡把他移除。寫法見 `colyseus` 技能。
 
 ## 開發流程

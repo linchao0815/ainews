@@ -135,6 +135,8 @@ function rankName(v: number) {
   const client = new Client(SERVER);
   const room = await client.joinOrCreate("card", { name: NAME });
   actor.send({ type: "JOINED" });
+  let leaveCode: number | null = null;
+  room.onLeave((code: number) => { leaveCode = code; });
   // 0.18 standard callbacks API (see .claude/skills/colyseus/SKILL.md "State callbacks").
   const callbacks = Callbacks.get(room);
 
@@ -201,6 +203,7 @@ function rankName(v: number) {
     soundExists: () => sound.exists("reveal"),
     counters: () => ({ flipCount, soundPlays, lastFlipDuration, reducedMotion }),
     rawSend: (type: string, msg?: unknown) => room.send(type, msg),
+    connection: () => ({ leaveCode }),
   };
   render();
 })().catch((e) => { errors.push(String(e?.stack ?? e)); console.error(e); });

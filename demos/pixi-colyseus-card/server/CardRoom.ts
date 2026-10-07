@@ -1,7 +1,8 @@
 // @colyseus/core instead of the `colyseus` meta package: the meta package pulls
 // @colyseus/auth -> grant -> elliptic/uuid (npm audit findings) that this game never uses.
-import { Room, type Client } from "@colyseus/core";
+import { Room, validate, type Client } from "@colyseus/core";
 import { schema, t, StateView, type SchemaType } from "@colyseus/schema";
+import { z } from "zod";
 
 // Public fields go to everyone; `card` is private (.view()) and only reaches
 // clients whose StateView contains this player instance (= the owner).
@@ -24,6 +25,23 @@ export const CardState = schema({
 
 const log = (...a: unknown[]) => console.log("[server]", ...a);
 
+// REJECT logging is rate-limited per (player, reason): at most one line per window,
+// later lines report how many were suppressed. Stops a client from flooding the logs.
+const REJECT_LOG_WINDOW_MS = 5000;
+const rejectLog = new Map<string, { last: number; suppressed: number }>();
+function logReject(sessionId: string, reason: string, line: string) {
+  const key = `${sessionId}:${reason}`;
+  const now = Date.now();
+  const entry = rejectLog.get(key);
+  if (entry && now - entry.last < REJECT_LOG_WINDOW_MS) {
+    entry.suppressed += 1;
+    return;
+  }
+  const extra = entry?.suppressed ? ` (+${entry.suppressed} suppressed)` : "";
+  rejectLog.set(key, { last: now, suppressed: 0 });
+  log(`REJECT ${line}${extra}`);
+}
+
 export class CardRoom extends Room {
   maxClients = 2;
   state = new CardState();
@@ -34,11 +52,11 @@ export class CardRoom extends Room {
       const p = this.state.players.get(client.sessionId) as PlayerT | undefined;
       if (!p) return;
       if (this.state.phase !== "dealt") {
-        log(`REJECT ready from ${p.name}: phase=${this.state.phase}`);
+        logReject(client.sessionId, "ready-phase", `ready from ${p.name}: phase=${this.state.phase}`);
         return;
       }
       if (p.ready) {
-        log(`REJECT duplicate ready from ${p.name}`);
+        logReject(client.sessionId, "ready-dup", `duplicate ready from ${p.name}`);
         return;
       }
       p.ready = true;
@@ -47,11 +65,13 @@ export class CardRoom extends Room {
     },
     // Cheat attempts: the client never decides outcomes or cards.
     claim_win: (client: Client) => {
-      log(`REJECT claim_win from ${this.nameOf(client)}: outcome is server-authoritative`);
+      logReject(client.sessionId, "claim_win", `claim_win from ${this.nameOf(client)}: outcome is server-authoritative`);
     },
-    set_card: (client: Client, value: unknown) => {
-      log(`REJECT set_card(${JSON.stringify(value)}) from ${this.nameOf(client)}: cards are dealt by server`);
-    },
+    // validate(): a payload that fails the schema never reaches the handler; Colyseus
+    // disconnects the sender with CloseCode.WITH_ERROR (4002).
+    set_card: validate(z.number().int(), (client: Client, value: number) => {
+      logReject(client.sessionId, "set_card", `set_card(${value}) from ${this.nameOf(client)}: cards are dealt by server`);
+    }),
   };
 
   onCreate() {
@@ -78,6 +98,7 @@ export class CardRoom extends Room {
   onLeave(client: Client) {
     log(`leave ${this.nameOf(client)}`);
     this.state.players.delete(client.sessionId);
+    for (const key of rejectLog.keys()) if (key.startsWith(`${client.sessionId}:`)) rejectLog.delete(key);
     this.state.phase = "waiting";
   }
 
