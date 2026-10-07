@@ -3,7 +3,11 @@
 `skills/` 裡的技能分兩種：
 
 - **外部技能**：從各自的 repo **原樣複製**過來，內容沒有修改。
-- **`pixi-addons`、`xstate-flow`**：本專案自己寫的技能。
+- **`pixi-addons`、`xstate-flow`、`card-room-server`、`release-pipeline`**：本專案自己寫的技能。後兩個是 2026-10-07 從 AGENTS.md 拆出來的：
+  - `card-room-server`：伺服器訊息、驗證、限流、私密欄位、斷線重連
+  - `release-pipeline`：測試掛鉤、主程式大小預算、package-lock、CI、發佈
+
+  拆分的原因是 AGENTS.md 每一輪都會整份載入，當時已經長到 115 行；拆完後剩 57 行，只保留核心規則和技能索引。
 - **`card-game-design`**：本專案改寫的技能，內容取自 awesome-gamedev（Apache-2.0）和 Game Studios（MIT）。原作者與修改內容寫在該資料夾的 `NOTICE`。
 
 本專案特有的規則寫在 `../AGENTS.md`。

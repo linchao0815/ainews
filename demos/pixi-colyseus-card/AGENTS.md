@@ -1,115 +1,57 @@
 # AGENTS.md：pixi-colyseus-card
 
-兩人「比大小」卡牌遊戲，是技術驗證用的最小範例。
-- 前端：PixiJS 8，用 Capacitor 包成 App。
-- 伺服器：Colyseus 0.18。
+這是一個兩人「比大小」卡牌遊戲，用來做技術驗證的最小範例。前端用 PixiJS 8，再用 Capacitor 包成 App；伺服器用 Colyseus 0.18。
+指令請看 `package.json` 的 scripts，人工操作步驟請看 `README.md`。
 
-執行指令看 `package.json` 的 scripts，人工操作步驟看 `README.md`。
+## 核心規則：伺服器說了算
 
-## 架構規則：伺服器說了算
-
-- **發牌、判定勝負、計分只寫在 `server/CardRoom.ts`。**
-- **前端只做兩件事**：把 `room.state` 畫出來，以及用 `room.send()` 送出玩家的意圖。目前唯一的意圖是 `ready`。
-- **私密資料的寫法**：在 schema 欄位加上 `.view()`，再到 `onJoin` 裡呼叫 `client.view.add(該玩家)`。這樣資料只會傳給擁有者，其他人的瀏覽器裡根本收不到。
-- **新增訊息類型時**：加在 `CardRoom` 的 `messages = {...}` 裡（0.18 的宣告式寫法）。處理函式先檢查兩件事——目前是哪個遊戲階段（`state.phase`），以及送訊息的是誰（用 `client` 參數判斷，不採信訊息內容裡附帶的 sessionId）。不合法的請求，用 `log("REJECT ...")` 記下來後直接 return。
-- **伺服器端從 `@colyseus/core` 和 `@colyseus/ws-transport` import**，不使用 `colyseus` 這個整合套件。整合套件會把 `@colyseus/auth` → `grant` → `elliptic`／`uuid` 一起裝進來，這幾個都有 npm audit 回報的漏洞，而本專案根本用不到登入功能。`colyseus` 技能的範例寫的是 `from "colyseus"`，照抄時要改成 `@colyseus/core`。
-- **Schema 一律用 builder 語法**（`schema({...})`、`t.number()`），型別用 `SchemaType<typeof X>`。不使用裝飾器，所以 TypeScript 不需要另外設定。
-- **前端監聽狀態用 `Callbacks.get(room)`**，例如 `callbacks.listen("phase", fn)`、`callbacks.onAdd("players", fn)`。
-- **拒絕請求時，一律呼叫 `logReject(sessionId, 原因, 訊息)`**，不要直接用 `log("REJECT ...")`。`logReject` 會限制記錄頻率：同一位玩家、同一種原因，5 秒內只寫一行，被略過的次數會附在下一行裡。這是為了避免有人狂送作弊訊息把日誌灌爆。實測連送 50 筆，日誌只多 1 行。
-- **有內容的訊息，要用 `validate(zod 格式, 處理函式)` 檢查格式**，寫法參考 `set_card`。格式不符的訊息不會進到處理函式，Colyseus 會直接把送出的玩家踢出房間，斷線代碼是 `4002`（WITH_ERROR）。正常的前端不可能送出格式錯誤的訊息，所以這樣處理是合理的。沒有內容的訊息（例如 `ready`）不需要驗證。
-- **斷線重連（已實作，保留 20 秒）**：
-  - **暫時斷線**：`onDrop` 會呼叫 `allowReconnection(client, RECONNECT_SECONDS)` 保留座位，同時把 `connected` 設為 false。
-  - **重連成功**：`onReconnect` 把 `connected` 改回 true。
-  - **確定離開**：只有在 `onLeave` 才把玩家移除。
-  - **只要不是玩家主動離開（CONSENTED），都會先進 `onDrop`**，包括被 `validate()` 踢出的 `WITH_ERROR`（4002）。所以 `onDrop` 一開始要先排除 4002，不能替竄改過的客戶端保留座位。
-  - **關閉分頁（1001）也會被當成暫時斷線**，座位一樣會保留 20 秒。
-- **前端 SDK 會自動重連**：`room.onDrop` 和 `room.onReconnect` 只需要負責顯示提示，不需要自己寫重試邏輯。
-  - **SDK 的限制**：房間至少要連線 5 秒（`minUptime`），才會啟用自動重連。剛加入房間就斷線的話，不會自動重連。
-  - 預設最多重試 15 次，每次間隔 0.1～5 秒。
+- **發牌、判定勝負、計分只能寫在 `server/CardRoom.ts`**。前端只負責兩件事：畫出 `room.state`，以及用 `room.send()` 送出玩家想做的動作。
+- 對手看不到的資料（手牌等）**根本不送到對方的瀏覽器**，不是只在畫面上藏起來。
+- 每一個被拒絕的請求都要記錄，每一條規則都要有 e2e 測試。
+- 細節請看 `card-room-server` 技能。
 
 ## 開發流程
 
-1. **補素材**：如果 `public/assets/` 不存在，先執行 `npm run assets`。這一步需要 Python。完成條件：`public/assets/spine/` 底下有 3 個檔案，`public/assets/reveal.wav` 也存在。
-2. **啟動服務**：在背景啟動 `npm run server`（port 2567）和 `npm run dev`（port 5173）。完成條件：`curl` 兩個 port 都有回應。如果 port 已經被占用，那是上一輪測試留下的程序，先把它結束掉。
-3. **實作改動。**
-4. **補測試**：新增的每一條規則或功能，都要在 `tests/e2e.mjs` 加一筆 `check(...)`。作弊情境用 `window.__demo.rawSend()` 模擬。
-5. **執行 `npm run test:e2e`**。完成條件：最後一行印出 `ALL PASS`。如果改動影響畫面，還要看 `logs/e2e/*.png` 截圖確認。
-   - 改到版面、文字或 UI 時，**還要跑 `npm run test:layout`**（4 種手機尺寸，直式、橫式加上安全區域），並查看 `logs/responsive/*.png`。
-   - 測試期間修改 `client/main.ts` 或 `index.html`，Vite 會整頁重新載入，正在跑的測試就會出現「Execution context was destroyed」。這是時機問題，不是程式錯誤，存檔後等 2～3 秒再重跑就好。
-6. **測打包後的版本（改到打包或資源載入時才需要）**：
-   - 先執行 `npm run build:e2e`（e2e 模式，會保留測試掛鉤），再於背景執行 `npm run preview`（port 4173），然後設定 `BASE=http://localhost:4173` 跑一次 `npm run test:e2e`。
-   - 接著執行 `npm run test:bundle`，確認正式版打包裡沒有測試掛鉤。
-   - 完成條件：兩者都印出 PASS。
-7. **收尾**：把 2567、5173、4173 三個 port 上的程序全部結束。
-
-**CI**：只要 push 有改到本目錄，GitHub Actions 就會執行 `.github/workflows/pixi-colyseus-card-ci.yml`（在 repo 根目錄），依序跑：
-- `npm ci`
-- `npm audit --omit=dev`（結果必須是 0）
-- 下載素材
-- `test:bundle`
-- 用 `build:e2e` 打包後跑 `test:e2e` 與 `test:layout`
-
-失敗時，可以在該次執行的 artifact 下載 `logs/`（截圖和伺服器日誌）。新增測試指令時，記得把它加進這個 workflow。
-
-**`package-lock.json` 要用新版 npm 產生**（例如 `npx npm@latest install`）。原因如下：
-- CI 用的是 Node 24 最新版附帶的 npm，對「選用依賴底下的同伴依賴」檢查比較嚴格。
-- 這個專案的依賴鏈是：`@pixi/layout` 的選用依賴 `@pixi/react`，它的同伴依賴是 `react`。
-- 用舊版 npm 11.6.2 產生的鎖定檔裡沒有 `react`，CI 上的 `npm ci` 就會報 `Missing: react@19.3.0 from lock file` 而失敗。
-- 換套件之後，先用 `npx npm@latest ci` 在本機試裝一次，確認沒問題再 push。
+1. **補素材**：如果 `public/assets/` 不存在，執行 `npm run assets`（需要 Python）。完成條件：`public/assets/spine/` 底下有 3 個檔案，而且有 `public/assets/reveal.wav`。
+2. **啟動服務**：在背景執行 `npm run server > logs/server.log`（port 2567）和 `npm run dev`（port 5173）。完成條件：`curl` 兩個 port 都有回應。如果 port 被占用，代表上一輪的程序還在，先把它結束。
+3. **先寫測試**：每一條新規則或新功能，都先在 `tests/e2e.mjs` 加一筆 `check(...)`，親眼看到它失敗，再開始實作。
+4. **實作**。
+5. **執行 `npm run test:e2e`**。完成條件：印出 `ALL PASS`。
+   - 改到版面、文字或 UI 時，再跑 `npm run test:layout`，並打開 `logs/e2e/*.png`、`logs/responsive/*.png` 看截圖。數字通過了也要看截圖，因為有些問題只有畫面看得出來。
+   - 測試執行中改了 `client/main.ts` 或 `index.html`，Vite 會整頁重新載入，測試會出現「Execution context was destroyed」。這不是程式錯誤，等 2～3 秒重跑即可。
+   - 改到打包、套件或資源載入時，照 `release-pipeline` 技能，加跑打包版的 e2e 和 `test:bundle`。
+6. **收尾**：把 2567、5173、4173 三個 port 的程序都結束掉。要 push 的話，照 `release-pipeline` 技能，**監看 CI 直到跑完**。
 
 ## 測試紀律
 
-- **修 bug 時，先寫一個能重現 bug 的 `check(...)`，親眼看到它失敗，再去修程式。** 新增功能也照這個順序，先寫檢查項目再實作。沒看過失敗的測試，可能根本沒有在檢查你以為它在檢查的東西。
-- **不穩定的測試**（同樣的程式，有時過、有時不過）：
-  - 先用至少 3 次重跑判斷它多常失敗，只跑 1、2 次的結果一律算「疑似」。
-  - 失敗率超過 25%，立刻處理；5～25% 要調查原因；1～5% 先持續觀察。
-  - 常見原因有三種：等待時機不對（應該等狀態符合，而不是固定睡幾秒）、上一輪測試留下的程序或房間、一個瀏覽器頁面太早離開導致其他頁面的狀態被改掉。
-  - 修好之前可以先暫停這個測試，但不能刪掉它。
-- **沒有檢查過的項目，就照實回報「未評估」**，不要說成通過。例如沒有實際的手機可以測，就寫「未在實機驗證」。
-- **測試要互相隔離**：e2e 結束前，會對每個頁面呼叫 `__demo.leave()`（主動離開，不等回應），再關掉瀏覽器。如果直接關瀏覽器，伺服器會替每個玩家保留座位 20 秒，下一輪測試的配對就會被搞亂。
-- **斷網測試期間，主控台出現的 WebSocket 連線失敗訊息是正常的**（SDK 正在重試）。e2e 用 `EXPECTED_ERROR` 只過濾這一種訊息，其他錯誤一律照樣判失敗。
-- **未評估**：斷線超過 20 秒、座位被釋放之後的處理流程。這需要等超過 20 秒，目前 e2e 沒有涵蓋。
-
-## 測試掛鉤 `window.__demo`
-
-`tests/e2e.mjs` 完全靠 `client/main.ts` 裡的 `window.__demo` 來讀取遊戲狀態，包括：`machine()`、`state()`、`cards()`、`buttonCenter()`、`spine()`、`counters()`、`rawSend()`。
-
-重構時這些介面要保持相容。如果真的要改，同一個改動裡一併更新測試。
-
-`window.__demo` 只會在兩種情況下出現：`vite` 開發模式（`import.meta.env.DEV`），以及 `vite build --mode e2e`。一般的 `npm run build` 會把整段移除。新增測試掛鉤時，要放在同一個 `if` 判斷式裡面，並確認 `npm run test:bundle` 仍然通過。
-
-## 已知的坑
-
-- **Spine 4.3 改了函式名稱**：`AnimationState.getCurrent()` 改成 `getTrack()`。寫 Spine API 前，先查 `node_modules/@esotericsoftware/spine-core/dist/*.d.ts` 確認。
-- **剛連上伺服器時資料還沒到**：`joinOrCreate()` 剛完成時，`room.state.players` 可能還是 `undefined`，畫面程式要能處理這個狀況（參考 `me()`、`opp()` 的寫法）。
-- **xstate 在狀態沒變時也會通知**：事件被忽略時，`actor.subscribe` 照樣會收到通知。記錄狀態轉換時，要先跟上一筆比對，排除重複。
-- **`@pixi/layout` 的載入順序**：必須在建立 `Application` 之前 import。
-- **Spine 也必須在 `app.init()` 之前用靜態 import 載入**：import 時它會註冊渲染管線，而渲染器只在建立的那一刻收集管線。延後載入的話，畫面渲染時會出現 `validateRenderable` 錯誤。音效（@pixi/sound）沒有這個限制，已改成延後載入。
-- **主程式大小預算是 750 KB**，由 `npm run test:bundle` 檢查。實測從原本的 956 KB 降到 723 KB。新增大型套件時，先確認它能不能延後載入（`import()`），再決定要不要放進主程式。
-- **粒子特效**：用 PixiJS v8 內建的 `ParticleContainer`。`@pixi/particle-emitter` 只支援 v7 以下。
-- **連線套件**：用 `@colyseus/sdk`。舊的 `colyseus.js` 停在 0.16 版。
-- **Spine 素材授權**：素材受 Spine 授權條款約束，所以不進版本記錄（已列在 `.gitignore`）。要用時以 `npm run assets` 下載。
-- **檔案格式**：文字檔用 UTF-8（不加 BOM）、Windows 換行（CRLF）。這個 repo 有設定 `core.autocrlf=true`。暫時的輸出一律放 `logs/`，這個資料夾不會進版本記錄。
+- **修 bug 時，先寫一個能重現它的檢查，看它失敗，再修。** 沒看過失敗的測試，不能證明它真的在檢查那件事。
+- **不穩定的測試**（有時過、有時不過）：
+  - 至少重跑 3 次才能判斷。只跑 1、2 次的結果一律算「疑似」。
+  - 失敗率超過 25% 立刻處理，5～25% 要調查，1～5% 先觀察。修好之前可以先暫停這項測試，但不要刪掉。
+  - 常見原因：等待時機不對（應該等到狀態符合條件，而不是固定睡幾秒）、上一輪留下的程序或房間、某個頁面太早離開。
+- **測試之間要互相隔離**：e2e 結束前，對每個頁面呼叫 `__demo.leave()`（不要等它回應）。如果直接關掉瀏覽器，伺服器會替每個玩家保留座位 20 秒，下一輪的配對就會出錯。
+- **沒有檢查過的項目，就照實寫「未評估」**，不要說成通過。例如沒有實體手機可以測，就寫「未在實機驗證」。
 
 ## 專案內的技能（`.claude/skills/`）
 
-這裡收錄的技能，版本都和本專案使用的套件對得上。Claude Code 會自動載入；其他 agent 請在對應任務開始前，直接讀取該技能的 `SKILL.md`。
+Claude Code 會自動載入這些技能。其他 agent 請在開始對應的工作之前，先讀該技能的 `SKILL.md`。
 
-- **設計或修改遊戲規則、新增牌或牌區、調整翻牌與揭曉的手感、加入音效，或製作手機 UI 之前**：讀 `.claude/skills/card-game-design/SKILL.md`。這份是本專案改寫的版本，涵蓋隱藏資訊、揭曉時序、回饋分級、減少動態效果、觸控尺寸和音效解鎖。
-- **要快速試做一個新玩法時**：讀 `prototype-fast`。開始之前先寫好「要回答什麼問題、時間上限、保留或放棄的判斷條件」。原型放在另一個目錄，**不要直接改這個範例**。它提到的 `game-jam`、`steam-publish` 等技能本專案沒有收錄，請忽略。
+| 什麼時候讀 | 技能 |
+|---|---|
+| 改 `server/`、新增訊息或遊戲階段、處理斷線重連 | `card-room-server`（本專案的規則）＋ `colyseus`（官方 0.18 API） |
+| 加套件、改打包或 vite 設定、新增測試掛鉤、改 CI、push、準備發佈 | `release-pipeline` |
+| 改遊戲規則、牌或牌區、翻牌或揭曉的手感、音效、手機 UI | `card-game-design` |
+| 改前端流程，或判斷按鈕可不可以按 | `xstate-flow` |
+| 做按鈕、UI 元件、排版、Spine、音效，或對 Pixi 物件用 GSAP | `pixi-addons` |
+| 任何 PixiJS v8 的工作 | `pixijs`（總入口；只收錄了 26 個子技能中的 14 個，缺的部分照它的備援規則查 llms.txt） |
+| GSAP 的 API | `gsap-core`、`gsap-timeline`（官方技能是以 DOM 為對象寫的，用在 Pixi 上的差異以 `pixi-addons` 為準） |
+| Capacitor 的設定、CLI、Android／iOS 疑難排解 | `capacitor-app-development`（第三方 Capawesome 寫的，會推銷付費服務；本專案優先用 `@capacitor/*` 官方外掛） |
+| 要快速試做新玩法 | `prototype-fast`（原型放在另一個目錄，不要直接改這個範例） |
 
-- **寫或修改 Room、Schema、前端狀態同步、重新連線的程式之前**：讀 `.claude/skills/colyseus/SKILL.md`。這是 Colyseus 官方技能，對應 0.18 版。需要細節時，依它的指引查 `references/` 裡的對應段落。
-- **任何 PixiJS v8 的工作**：從 `.claude/skills/pixijs/SKILL.md`（總入口）開始，它會指引你該讀哪個子技能。本專案只收錄了 26 個子技能中的 14 個；入口技能連到的子技能如果不存在，照它自己的備援規則查 `https://pixijs.download/release/docs/llms.txt`。
-- **按鈕與 UI 元件、版面排列、Spine 角色、音效，或對 Pixi 物件做 GSAP 動畫之前**：讀 `.claude/skills/pixi-addons/SKILL.md`。這是本專案自己寫的技能，內容以型別定義和實測結果為準。
-- **GSAP 動畫**：一般 API 讀 `gsap-core`，串接多段動畫讀 `gsap-timeline`。這兩份都是 GSAP 官方技能，但它們以 DOM 為對象，用在 Pixi 物件上的差異以 `pixi-addons` 第 6 步為準。
-- **Capacitor 的設定、CLI、Android／iOS 疑難排解**：讀 `capacitor-app-development`。這份是 Capawesome 的技能，裡面會推薦 Capawesome 的付費雲端服務和外掛；本專案優先使用 `@capacitor/*` 官方外掛。另外要注意：遊戲伺服器的位址屬於前端程式的設定（`?server=` 或打包時的環境變數），**和 `capacitor.config.ts` 的 `server.url` 無關**，後者只是開發時即時重新載入（live reload）用的。
-- **改動前端遊戲流程、按鈕能不能按的判斷，或在 `tableMachine` 加入新事件之前**：讀 `.claude/skills/xstate-flow/SKILL.md`。這是本專案自己寫的技能，內容包括 xstate v5 的寫法、`snapshot.can()` 的用法，以及哪些情況需要先改伺服器。
-- **技能和本文件衝突時，以本文件與實測結果為準**。目前已知一處：Colyseus 技能說 `getStateCallbacks` 已經移除，但它在 `@colyseus/sdk` 0.18.5 仍然存在，只是不再推薦使用。本專案統一用 `Callbacks.get`。
-- **技能的來源與更新方式**：見 `.claude/VENDORED-SKILLS.md`。技能內容一律照原樣保存，本專案特有的規則寫在本文件。
+- **規則有衝突時，以本文件和本專案自己寫的技能為準**，因為這些都經過實測。外部技能的內容一律照原樣保留，不修改。
+- 技能的來源與更新方式，見 `.claude/VENDORED-SKILLS.md`。
 
-## 背景資料
+## 其他
 
-- **要選用或替換套件之前**：先讀 `跨平台手遊-技術選型與成本-研究筆記.md` 第十一節。這節有各套件的版本、PixiJS v8 相容性和維護狀況，裡面標記 ⚠️ 的套件要避開。
-- **評估成本或上架風險時**：讀同一份筆記的第十二～十四節，內容包含 App Store 條款、授權費和各階段費用。
-- **改測試範圍或驗證標準之前**：讀同一份筆記第十五節第 5 項，確認之前驗證過什麼、還有什麼沒驗證。
-- **準備發佈到網頁，或上架 App Store／Google Play 之前**：逐項填寫 `docs/release-checklist.md`。每一項只能填「通過」「不通過」「未評估」三種結果，沒有檢查的項目不能當作通過。
+- 檔案格式：文字檔用 UTF-8（不加 BOM），換行用 CRLF（repo 設定了 `core.autocrlf=true`）。暫存的輸出放在 `logs/`，這個目錄不會進版本記錄。
+- 要選用或替換套件之前，先讀 `跨平台手遊-技術選型與成本-研究筆記.md` 第十一節（各套件的版本、與 v8 的相容性；標了 ⚠️ 的不要用）。評估成本或上架風險時讀第十二到十四節；要改驗證範圍時讀第十五節。

@@ -38,7 +38,11 @@
 ## AI agent 開發
 
 - 開發規則和已知的坑寫在 [AGENTS.md](AGENTS.md)。`CLAUDE.md` 會引用它，所以 Claude Code 也會讀到。
-- `.claude/skills/` 收錄了 Colyseus、PixiJS、GSAP 的官方 agent 技能，以及 Capawesome 的 Capacitor 技能，全部對應本專案使用的版本。本專案也自己寫了兩個技能：`pixi-addons` 涵蓋 @pixi/ui、@pixi/layout、Spine、@pixi/sound；`xstate-flow` 涵蓋 XState v5 的前端流程。另外收錄了 `prototype-fast`（快速原型流程），以及從 awesome-gamedev、Claude-Code-Game-Studios 改寫的 `card-game-design`（卡牌遊戲設計、手感、手機 UI）。
+- `.claude/skills/` 收錄了 Colyseus、PixiJS、GSAP 的官方 agent 技能，以及 Capawesome 的 Capacitor 技能，全部對應本專案使用的版本。本專案也自己寫了四個技能：
+  - `pixi-addons`：@pixi/ui、@pixi/layout、Spine、@pixi/sound
+  - `xstate-flow`：XState v5 的前端流程
+  - `card-room-server`：伺服器訊息、驗證、限流、斷線重連
+  - `release-pipeline`：打包、套件、CI 與發佈另外收錄了 `prototype-fast`（快速原型流程），以及從 awesome-gamedev、Claude-Code-Game-Studios 改寫的 `card-game-design`（卡牌遊戲設計、手感、手機 UI）。
 - 上架前要逐項確認 [docs/release-checklist.md](docs/release-checklist.md)。來源與更新方式見 [.claude/VENDORED-SKILLS.md](.claude/VENDORED-SKILLS.md)。
 
 ## 執行方式

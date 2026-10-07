@@ -21,6 +21,8 @@ description: "本專案 PixiJS 周邊套件的用法與陷阱：@pixi/ui（Fancy
 
 只要版本和上表不同，就先讀型別定義再動手，不要沿用下面的寫法。
 
+- **粒子特效**：用 PixiJS v8 內建的 `ParticleContainer`／`Particle`。官方技能 `pixijs-scene-particle-container` 有寫法。不要用 `@pixi/particle-emitter`，它的 peerDependencies 只支援 v7 以下。
+
 ## 第 2 步：@pixi/layout（排版）
 
 - **在建立 `Application` 之前**先執行 `import "@pixi/layout";`。這個 import 會替 Container 加上 `layout` 屬性（mixin），順序錯了 `layout` 就不會生效。
