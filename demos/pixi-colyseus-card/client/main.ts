@@ -136,7 +136,8 @@ function rankName(v: number) {
     if (o) oppCard.show(o.shownCard ?? 0, phase === "revealed" && (o.shownCard ?? 0) > 0);
     scoreText.text = `第 ${room.state.round} 局　我 ${m?.score ?? 0} : ${o?.score ?? 0} 對手`;
     const st = actor.getSnapshot().value;
-    button.enabled = st === "myChoice";
+    // Enabled iff the machine would accept READY_SENT now (see .claude/skills/xstate-flow).
+    button.enabled = actor.getSnapshot().can({ type: "READY_SENT" });
     status.text = ({
       connecting: "連線中…", waiting: "等待對手加入…", myChoice: "看完你的牌，按「開牌」",
       waitingOpponent: "等待對手開牌…",
@@ -162,7 +163,7 @@ function rankName(v: number) {
   callbacks.listen("round", render);
 
   button.onPress.connect(() => {
-    if (actor.getSnapshot().value !== "myChoice") return;
+    if (!actor.getSnapshot().can({ type: "READY_SENT" })) return;
     room.send("ready");
     actor.send({ type: "READY_SENT" });
     render();

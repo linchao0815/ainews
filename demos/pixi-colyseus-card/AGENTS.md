@@ -51,7 +51,7 @@
 - **按鈕與 UI 元件、版面排列、Spine 角色、音效，或對 Pixi 物件做 GSAP 動畫之前**：讀 `.claude/skills/pixi-addons/SKILL.md`。這是本專案自己寫的技能，內容以型別定義和實測結果為準。
 - **GSAP 動畫**：一般 API 讀 `gsap-core`，串接多段動畫讀 `gsap-timeline`。這兩份都是 GSAP 官方技能，但它們以 DOM 為對象，用在 Pixi 物件上的差異以 `pixi-addons` 第 6 步為準。
 - **Capacitor 的設定、CLI、Android／iOS 疑難排解**：讀 `capacitor-app-development`。這份是 Capawesome 的技能，裡面會推薦 Capawesome 的付費雲端服務和外掛；本專案優先使用 `@capacitor/*` 官方外掛。另外要注意：遊戲伺服器的位址屬於前端程式的設定（`?server=` 或打包時的環境變數），**和 `capacitor.config.ts` 的 `server.url` 無關**，後者只是開發時即時重新載入（live reload）用的。
-- **xstate**：沒有現成技能，用法以 `client/main.ts` 的 `tableMachine` 為準。
+- **改動前端遊戲流程、按鈕能不能按的判斷，或在 `tableMachine` 加入新事件之前**：讀 `.claude/skills/xstate-flow/SKILL.md`。這是本專案自己寫的技能，內容包括 xstate v5 的寫法、`snapshot.can()` 的用法，以及哪些情況需要先改伺服器。
 - **技能和本文件衝突時，以本文件與實測結果為準**。目前已知一處：Colyseus 技能說 `getStateCallbacks` 已經移除，但它在 `@colyseus/sdk` 0.18.5 仍然存在，只是不再推薦使用。本專案統一用 `Callbacks.get`。
 - **技能的來源與更新方式**：見 `.claude/VENDORED-SKILLS.md`。技能內容一律照原樣保存，本專案特有的規則寫在本文件。
 

@@ -3,7 +3,7 @@
 `skills/` 裡的技能分兩種：
 
 - **外部技能**：從各自的 repo **原樣複製**過來，內容沒有修改。
-- **`pixi-addons`**：本專案自己寫的技能。
+- **`pixi-addons`、`xstate-flow`**：本專案自己寫的技能。
 
 本專案特有的規則寫在 `../AGENTS.md`。
 
@@ -16,7 +16,13 @@
 
 **本專案自己寫的技能**：`pixi-addons`，涵蓋 @pixi/ui、@pixi/layout、spine-pixi-v8、@pixi/sound，以及 GSAP 用在 Pixi 物件上的寫法。這些套件找不到官方技能，搜到的社群技能也都是為特定專案寫的，所以自己寫。內容以 `node_modules` 裡的型別定義和本專案實測的寫法為準，套件升級時要一起更新。
 
+**本專案自己寫的技能：`xstate-flow`**。內容是 XState v5 的前端流程寫法：v4 舊寫法和 v5 寫法的對照、`snapshot.can()`、`subscribe` 在狀態沒變時也會通知的陷阱，以及新增狀態的步驟。自己寫的原因如下：
+
+- Stately 官方的 `statelyai/skills`（含 `xstate-v5`）**沒有任何授權條款**，不能收錄。
+- 有授權的社群版本，有的沒用到 v5 的關鍵 API，有的只適用於原作者自己的專案。
+
 **評估後沒有收錄的**：
+- `statelyai/skills`（Stately 官方）：截至 2026-10-07，repo 沒有 LICENSE 檔，`SKILL.md` 和 README 也沒有寫授權條款。開發者可以自己全域安裝來用，但不要放進本專案。
 - `ionic-team/capacitor-skills`（Capacitor 官方）、`Cap-go/capgo-skills`：兩者都**沒有授權條款**，依法不能複製；而且內容是外掛開發、版本遷移、產生 CI 設定，和本專案無關。
 - 社群的 GSAP、@pixi/ui、@pixi/layout、Spine 技能：大多是為特定專案寫的，或沒有授權條款。
 
@@ -35,6 +41,10 @@
   - **GSAP 淡出**：它載入了 `pixi-addons` 和 `gsap-core`，改用 `alpha` 淡出，並在 `onComplete` 裡設 `visible = false`，沒有用 `autoAlpha`。它還主動在淡出期間把點擊事件關掉。
   - **Capacitor 連正式伺服器**：它載入了 `capacitor-app-development` 和 `colyseus`。伺服器位址改從打包時的環境變數或網址參數傳入，沒有誤改 `capacitor.config.ts` 的 `server.url`。它也正確判斷：用 `wss://` 連線時，不需要開啟允許明文連線的 `cleartext`。
 - 收錄 GSAP 和 Capawesome 之前，所有 `.md` 都用同一份關鍵字清單掃描過，沒有發現可疑內容。也確認這兩包都沒有附帶腳本或 hook。
+- **xstate-flow 的驗證**：
+  - 「`subscribe` 在狀態沒變時也會通知」這件事，用 node 實際跑過。訂閱者收到的狀態依序是 `["a","a","b","b"]`。
+  - 照技能的建議，把按鈕判斷改成 `snapshot.can()` 之後，e2e 連跑 3 次，每次 21 項全部通過。
+  - 開一個全新的 `claude -p` 對話，請它加一個「確認」步驟。它載入了 `xstate-flow`，所有按鈕都改用 `can()` 判斷。它也正確判斷這只是前端的 UI 步驟，不是新的遊戲階段，所以沒有改動伺服器。
 
 ## 更新方式
 
