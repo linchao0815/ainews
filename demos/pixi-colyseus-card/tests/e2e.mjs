@@ -106,6 +106,21 @@ try {
 
   const counters = await d("A", () => window.__demo.counters());
   check("GSAP 翻牌動畫有執行", counters.flipCount >= 4, counters);
+  check("一般設定下翻牌有動畫（時長 > 0）", counters.lastFlipDuration > 0, counters);
+
+  // --- reduced motion: a second pair joins a new room with prefers-reduced-motion ---
+  for (const name of ["C", "D"]) {
+    const ctx = await browser.newContext({ viewport: { width: 760, height: 680 }, reducedMotion: "reduce" });
+    const page = await ctx.newPage();
+    consoleErrors[name] = [];
+    page.on("console", (m) => { if (m.type() === "error") consoleErrors[name].push(m.text()); });
+    page.on("pageerror", (e) => consoleErrors[name].push(`pageerror: ${e.message}`));
+    await page.goto(`${BASE}/?name=${name}`);
+    pages[name] = page;
+  }
+  for (const n of ["C", "D"]) await waitFor(n, () => window.__demo?.machine() === "myChoice", "myChoice (reduced motion)");
+  const cC = await d("C", () => window.__demo.counters());
+  check("減少動態效果時翻牌立即完成（時長 = 0）", cC.lastFlipDuration === 0, cC);
   check("開牌音效有播放（無例外）", counters.soundPlays >= 2, counters);
   const trans = await d("A", () => window.__demo.transitions.join(" > "));
   check("xstate 流程轉換正確", trans.startsWith("connecting > waiting > myChoice > waitingOpponent > revealed > myChoice"), trans);

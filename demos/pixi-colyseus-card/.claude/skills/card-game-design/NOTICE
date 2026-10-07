@@ -1,0 +1,23 @@
+card-game-design (pixi-colyseus-card project skill)
+
+This skill is a modified, condensed adaptation of material from:
+
+1. awesome-gamedev-agent-skills
+   https://github.com/gamedev-skills/awesome-gamedev-agent-skills (commit d4b0e35)
+   Copyright 2026 Abhishek Barali and the awesome-gamedev-agent-skills contributors
+   Licensed under the Apache License, Version 2.0 (see LICENSE in this folder).
+   Source skills: skills/genres/card-game, skills/disciplines/game-feel,
+   skills/disciplines/game-ui-ux, skills/disciplines/audio-design.
+
+2. Claude-Code-Game-Studios
+   https://github.com/Donchitos/Claude-Code-Game-Studios (commit b21fa0f)
+   Copyright (c) 2026 Donchitos, MIT License.
+   Source rules: .claude/rules/ui-code.md, .claude/rules/network-code.md,
+   .claude/rules/test-standards.md.
+
+Modifications (2026-10-07): translated to Traditional Chinese; rewritten for a
+server-authoritative Colyseus + PixiJS architecture (client never decides
+outcomes); removed Godot/Unity code, deck-builder effect stacks, gamepad/focus
+navigation and adaptive music; added hidden-information (StateView), reveal
+timing, reduced-motion handling as implemented in client/main.ts, mobile audio
+unlock, and platform touch-target sizes (Apple HIG 44pt, Material 48dp).

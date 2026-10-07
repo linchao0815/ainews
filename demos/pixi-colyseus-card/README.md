@@ -31,11 +31,13 @@
   - `claim_win`：玩家自己宣稱獲勝
   - `set_card`：玩家自己改牌
   - 重複送出 `ready`
+- **減少動態效果**：系統開啟「減少動態效果」（`prefers-reduced-motion`）時，翻牌直接換成新的牌面，不播動畫。
 
 ## AI agent 開發
 
 - 開發規則和已知的坑寫在 [AGENTS.md](AGENTS.md)。`CLAUDE.md` 會引用它，所以 Claude Code 也會讀到。
-- `.claude/skills/` 收錄了 Colyseus、PixiJS、GSAP 的官方 agent 技能，以及 Capawesome 的 Capacitor 技能，全部對應本專案使用的版本。另外還有兩個本專案自己寫的技能：`pixi-addons` 涵蓋 @pixi/ui、@pixi/layout、Spine、@pixi/sound；`xstate-flow` 涵蓋 XState v5 的前端流程。來源與更新方式見 [.claude/VENDORED-SKILLS.md](.claude/VENDORED-SKILLS.md)。
+- `.claude/skills/` 收錄了 Colyseus、PixiJS、GSAP 的官方 agent 技能，以及 Capawesome 的 Capacitor 技能，全部對應本專案使用的版本。本專案也自己寫了兩個技能：`pixi-addons` 涵蓋 @pixi/ui、@pixi/layout、Spine、@pixi/sound；`xstate-flow` 涵蓋 XState v5 的前端流程。另外收錄了 `prototype-fast`（快速原型流程），以及從 awesome-gamedev、Claude-Code-Game-Studios 改寫的 `card-game-design`（卡牌遊戲設計、手感、手機 UI）。
+- 上架前要逐項確認 [docs/release-checklist.md](docs/release-checklist.md)。來源與更新方式見 [.claude/VENDORED-SKILLS.md](.claude/VENDORED-SKILLS.md)。
 
 ## 執行方式
 
@@ -69,7 +71,7 @@ npm run cap:android   # 只產生 android/ 資料夾；要打包成 APK，還需
 
 ## 驗證結果（2026-10-07，Windows 11、Node 24.13.0）
 
-- 開發版連跑 3 次，正式版再跑 1 次：**每次 21 項檢查全部通過**。
+- 開發版連跑 3 次，正式版再跑 1 次：**每次 21 項檢查全部通過**。之後加入「減少動態效果」功能，檢查項目增加為 23 項；開發版連跑 3 次，每次也都全部通過。
 - 檢查項目包含：
   - 私密手牌不會外洩
   - Spine、音效、排版、翻牌動畫、按鈕都正常

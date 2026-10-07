@@ -16,6 +16,10 @@ const errors: string[] = [];
 const transitions: string[] = [];
 let flipCount = 0;
 let soundPlays = 0;
+let lastFlipDuration = -1; // seconds; 0 means the flip was applied instantly
+// Respect the OS "reduce motion" setting (see .claude/skills/card-game-design).
+const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+const FLIP_HALF = 0.15;
 
 // ---------- game flow (client-side view state; the server stays authoritative) ----------
 const tableMachine = setup({}).createMachine({
@@ -61,11 +65,20 @@ class CardView extends Container {
   show(value: number, faceUp: boolean) {
     if (value === this.value && faceUp === this.faceUp) return;
     flipCount++;
+    if (reducedMotion) {
+      // Same end state, no motion.
+      gsap.killTweensOf(this.scale);
+      this.scale.x = 1;
+      this.value = value; this.faceUp = faceUp; this.draw();
+      lastFlipDuration = 0;
+      return;
+    }
     // GSAP flip: squash to 0 width, swap face, expand back.
+    lastFlipDuration = FLIP_HALF * 2;
     gsap.timeline()
-      .to(this.scale, { x: 0, duration: 0.15, ease: "power1.in" })
+      .to(this.scale, { x: 0, duration: FLIP_HALF, ease: "power1.in" })
       .call(() => { this.value = value; this.faceUp = faceUp; this.draw(); })
-      .to(this.scale, { x: 1, duration: 0.15, ease: "power1.out" });
+      .to(this.scale, { x: 1, duration: FLIP_HALF, ease: "power1.out" });
   }
 
   get debug() { return { caption: this.caption, value: this.value, faceUp: this.faceUp }; }
@@ -186,7 +199,7 @@ function rankName(v: number) {
     buttonCenter: () => { const b = button.getBounds(); return { x: b.x + b.width / 2, y: b.y + b.height / 2, enabled: button.enabled }; },
     spine: () => ({ loaded: !!boy.skeleton, animations: boy.skeleton.data.animations.map((a) => a.name).slice(0, 6), current: boy.state.getTrack(0)?.animation?.name }), // Spine 4.3: getCurrent -> getTrack
     soundExists: () => sound.exists("reveal"),
-    counters: () => ({ flipCount, soundPlays }),
+    counters: () => ({ flipCount, soundPlays, lastFlipDuration, reducedMotion }),
     rawSend: (type: string, msg?: unknown) => room.send(type, msg),
   };
   render();

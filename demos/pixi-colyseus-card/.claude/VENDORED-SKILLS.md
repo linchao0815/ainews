@@ -4,6 +4,7 @@
 
 - **外部技能**：從各自的 repo **原樣複製**過來，內容沒有修改。
 - **`pixi-addons`、`xstate-flow`**：本專案自己寫的技能。
+- **`card-game-design`**：本專案改寫的技能，內容取自 awesome-gamedev（Apache-2.0）和 Game Studios（MIT）。原作者與修改內容寫在該資料夾的 `NOTICE`。
 
 本專案特有的規則寫在 `../AGENTS.md`。
 
@@ -20,6 +21,17 @@
 
 - Stately 官方的 `statelyai/skills`（含 `xstate-v5`）**沒有任何授權條款**，不能收錄。
 - 有授權的社群版本，有的沒用到 v5 的關鍵 API，有的只適用於原作者自己的專案。
+
+**awesome-gamedev 與 Claude-Code-Game-Studios 的處理方式**（兩者都評估了全部的候選內容）：
+
+| 內容 | 處理方式 |
+|---|---|
+| awesome-gamedev `prototype-fast`（Apache-2.0，commit `d4b0e35`） | **原樣收錄**，附上原 repo 的 LICENSE 和 NOTICE。它和遊戲引擎無關。裡面提到的 `game-jam`、`steam-publish`、`itch-publish` 這幾個技能沒有收錄 |
+| awesome-gamedev `card-game`、`game-feel`、`game-ui-ux`、`audio-design` | **改寫後合併成 `card-game-design`**。原文的程式範例都是 Godot／Unity，而且預設由前端決定遊戲結果，所以只保留適用的觀念 |
+| awesome-gamedev `performance-optimization`、`save-systems`、`input-systems` | 不收。只取「先實際量測再優化」「本機存檔的資料不可信」「按鈕要防止連點」這幾個觀念，寫進 card-game-design 或 AGENTS.md |
+| Game Studios 的 `rules/network-code`、`ui-code`、`test-standards` | 摘取其中的規則：伺服器權威、限制日誌頻率、UI 不保存遊戲狀態、修 bug 前先看測試失敗、不穩定測試的判斷門檻。這些規則寫進 AGENTS.md 和 card-game-design |
+| Game Studios 的 `release-checklist`、`launch-checklist` | **改寫成 `docs/release-checklist.md`**。只保留手機版、建置、資安、商店、上線準備這幾段，並補上本專案特有的項目 |
+| Game Studios 的其他 70 個技能、hooks、settings.json | 不收。這些內容依賴它自己的 `project.yaml`、`production/` 目錄和各種 agent 角色；hooks 會在每次寫檔、執行指令、對話開始與結束時自動跑 shell 腳本 |
 
 **評估後沒有收錄的**：
 - `statelyai/skills`（Stately 官方）：截至 2026-10-07，repo 沒有 LICENSE 檔，`SKILL.md` 和 README 也沒有寫授權條款。開發者可以自己全域安裝來用，但不要放進本專案。
@@ -45,6 +57,14 @@
   - 「`subscribe` 在狀態沒變時也會通知」這件事，用 node 實際跑過。訂閱者收到的狀態依序是 `["a","a","b","b"]`。
   - 照技能的建議，把按鈕判斷改成 `snapshot.can()` 之後，e2e 連跑 3 次，每次 21 項全部通過。
   - 開一個全新的 `claude -p` 對話，請它加一個「確認」步驟。它載入了 `xstate-flow`，所有按鈕都改用 `can()` 判斷。它也正確判斷這只是前端的 UI 步驟，不是新的遊戲階段，所以沒有改動伺服器。
+
+- **card-game-design 的驗證**：
+  - 照它的「減少動態效果」規則實作，並遵守 Game Studios 測試規範的「先看失敗」：先加 2 筆 e2e 檢查，在還沒實作時跑一次，**確實失敗了**（21 項通過、2 項失敗）。實作之後連跑 3 次，每次 **23 項全部通過**。
+  - 開一個全新的 `claude -p` 對話，請它規劃「改成 52 張牌、同點數比花色、加發牌動畫」。它做到了以下幾點：
+    - 載入了 `card-game-design`，第一步就是「先寫測試，看它失敗」。
+    - 洗牌只放在伺服器，`.view()` 保持不變。
+    - 發牌動畫會依照「減少動態效果」的設定處理。
+    - 主動指出新規則下平手的程式碼會變成永遠用不到，並把要不要刪除交給人決定。
 
 ## 更新方式
 
