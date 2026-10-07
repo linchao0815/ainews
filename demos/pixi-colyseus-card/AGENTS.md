@@ -12,6 +12,7 @@
 - **前端只做兩件事**：把 `room.state` 畫出來，以及用 `room.send()` 送出玩家的意圖。目前唯一的意圖是 `ready`。
 - **私密資料的寫法**：在 schema 欄位加上 `.view()`，再到 `onJoin` 裡呼叫 `client.view.add(該玩家)`。這樣資料只會傳給擁有者，其他人的瀏覽器裡根本收不到。
 - **新增訊息類型時**：加在 `CardRoom` 的 `messages = {...}` 裡（0.18 的宣告式寫法）。處理函式先檢查兩件事——目前是哪個遊戲階段（`state.phase`），以及送訊息的是誰（用 `client` 參數判斷，不採信訊息內容裡附帶的 sessionId）。不合法的請求，用 `log("REJECT ...")` 記下來後直接 return。
+- **伺服器端從 `@colyseus/core` 和 `@colyseus/ws-transport` import**，不使用 `colyseus` 這個整合套件。整合套件會把 `@colyseus/auth` → `grant` → `elliptic`／`uuid` 一起裝進來，這幾個都有 npm audit 回報的漏洞，而本專案根本用不到登入功能。`colyseus` 技能的範例寫的是 `from "colyseus"`，照抄時要改成 `@colyseus/core`。
 - **Schema 一律用 builder 語法**（`schema({...})`、`t.number()`），型別用 `SchemaType<typeof X>`。不使用裝飾器，所以 TypeScript 不需要另外設定。
 - **前端監聽狀態用 `Callbacks.get(room)`**，例如 `callbacks.listen("phase", fn)`、`callbacks.onAdd("players", fn)`。
 - **REJECT 日誌要限制頻率**：正式上線前，同一個玩家同一種被拒絕的訊息，要合併記錄或限制記錄頻率，避免有人刻意大量送錯誤訊息，把日誌灌爆。

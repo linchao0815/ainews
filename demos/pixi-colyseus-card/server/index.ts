@@ -1,7 +1,9 @@
-import { defineServer, defineRoom } from "colyseus";
+import { defineServer, defineRoom } from "@colyseus/core";
+import { WebSocketTransport } from "@colyseus/ws-transport";
 import { CardRoom } from "./CardRoom.ts";
 
 const server = defineServer({
+  transport: new WebSocketTransport(),
   rooms: {
     card: defineRoom(CardRoom),
   },

@@ -19,7 +19,7 @@
 | 音效 | @pixi/sound | 6.0.1 |
 | 前端流程 | xstate | 5.33.2 |
 | 連線（前端） | @colyseus/sdk | 0.18.5 |
-| 連線（伺服器） | colyseus / @colyseus/schema | 0.18.9 / 5.0.36 |
+| 連線（伺服器） | @colyseus/core / @colyseus/ws-transport / @colyseus/schema | 0.18.18 / 0.18.4 / 5.0.36 |
 | 包成 App | @capacitor/core、@capacitor/android | 8.5.2 |
 | 開發與測試 | vite、tsx、@playwright/test | 8.3.3、4.23.15、1.63.0 |
 
@@ -87,5 +87,5 @@ npm run cap:android   # 只產生 android/ 資料夾；要打包成 APK，還需
 - **剛連上伺服器時，`room.state` 可能還沒收到完整資料**。第一次繪製畫面前要先檢查，不然會讀到空值而出錯。
 - **連線網址**：預設連 `ws://<目前網址的主機>:2567`。裝進手機 App 時，要用 `?server=wss://...` 參數或修改程式，指定正式伺服器的位址。
 - **檔案大小**：打包後的主程式約 974 KB（gzip 壓縮後 308 KB），之後要拆檔，讓首次載入更快。
-- **安全性**：`npm audit` 報出伺服器端兩個中等風險的相依套件（`elliptic`、`uuid`）。正式上線前要處理。
+- **安全性**：原本 `npm audit` 回報 16 個漏洞，都是 `colyseus` 整合套件附帶的登入功能套件造成的。改用 `@colyseus/core` 之後已降到 0 個。
 - **Spine 授權**：這裡只拿官方範例素材來驗證。商業專案要另外購買 Spine 授權，見研究筆記第十四節。

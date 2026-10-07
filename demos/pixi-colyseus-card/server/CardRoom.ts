@@ -1,4 +1,6 @@
-import { Room, type Client } from "colyseus";
+// @colyseus/core instead of the `colyseus` meta package: the meta package pulls
+// @colyseus/auth -> grant -> elliptic/uuid (npm audit findings) that this game never uses.
+import { Room, type Client } from "@colyseus/core";
 import { schema, t, StateView, type SchemaType } from "@colyseus/schema";
 
 // Public fields go to everyone; `card` is private (.view()) and only reaches
