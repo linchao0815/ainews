@@ -58,6 +58,16 @@ npm run test:bundle
   4. 失敗時，用 `gh run view <id> --log-failed` 查原因。修好、重新 push 之後，新的 run 也要照樣監看。
 
   **不可以看到 in_progress 就結束這一輪。**
+- **`gh run watch` 回傳非 0，不一定代表 CI 失敗。** 連 GitHub API 逾時的時候（log 會出現 `dial tcp … connectex`），watch 也會用 exit 1 直接結束，但 CI 其實還在跑（2026-10-07 實際發生過）。遇到這種情況，處理方式如下：
+  1. 先用 `gh run view <id> --json status,conclusion` 確認 CI 的實際狀態。
+  2. 如果還在跑，改用下面這個會自動重試的迴圈，每 20 秒查一次，直到 CI 跑完：
+     ```bash
+     for i in $(seq 1 60); do
+       s=$(gh run view <id> --json status,conclusion --jq '"\(.status) \(.conclusion)"' 2>/dev/null)
+       case "$s" in "completed "*) echo "$s"; break;; esac   # 查詢失敗時 s 為空，下一輪會自動重試
+       sleep 20
+     done
+     ```
 
 ## 6. 發佈與上架
 
