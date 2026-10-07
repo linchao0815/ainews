@@ -42,6 +42,15 @@
    - 完成條件：兩者都印出 PASS。
 7. **收尾**：把 2567、5173、4173 三個 port 上的程序全部結束。
 
+**CI**：只要 push 有改到本目錄，GitHub Actions 就會執行 `.github/workflows/pixi-colyseus-card-ci.yml`（在 repo 根目錄），依序跑：
+- `npm ci`
+- `npm audit --omit=dev`（結果必須是 0）
+- 下載素材
+- `test:bundle`
+- 用 `build:e2e` 打包後跑 `test:e2e` 與 `test:layout`
+
+失敗時，可以在該次執行的 artifact 下載 `logs/`（截圖和伺服器日誌）。新增測試指令時，記得把它加進這個 workflow。
+
 ## 測試紀律
 
 - **修 bug 時，先寫一個能重現 bug 的 `check(...)`，親眼看到它失敗，再去修程式。** 新增功能也照這個順序，先寫檢查項目再實作。沒看過失敗的測試，可能根本沒有在檢查你以為它在檢查的東西。

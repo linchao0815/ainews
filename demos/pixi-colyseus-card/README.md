@@ -68,6 +68,8 @@ npm run test:layout                               # 4 種手機尺寸（直式�
 
 伺服器的輸出要導到 `logs/server.log`，日誌頻率限制那一項檢查才讀得到（可以用環境變數 `SERVER_LOG` 指定其他路徑），例如 `npm run server > logs/server.log`。讀不到這個檔案時，該項會判為「未評估」，不會當作通過。
 
+**CI**：push 改到本目錄時，GitHub Actions 會自動跑上面所有檢查，設定檔在 repo 根目錄的 `.github/workflows/pixi-colyseus-card-ci.yml`。失敗時，截圖和伺服器日誌會上傳成 artifact，保留 7 天。
+
 產生 Android 專案：
 
 ```powershell

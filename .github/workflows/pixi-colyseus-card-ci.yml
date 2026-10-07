@@ -1,0 +1,87 @@
+name: pixi-colyseus-card CI
+
+# Runs only when the demo (or this workflow) changes; the repo's other automation is untouched.
+on:
+  push:
+    paths:
+      - "demos/pixi-colyseus-card/**"
+      - ".github/workflows/pixi-colyseus-card-ci.yml"
+  pull_request:
+    paths:
+      - "demos/pixi-colyseus-card/**"
+      - ".github/workflows/pixi-colyseus-card-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pixi-colyseus-card-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: demos/pixi-colyseus-card
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: demos/pixi-colyseus-card/package-lock.json
+
+      # tools/make_wav.py is invoked as `python` by `npm run assets`.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Dependency audit (production deps must have 0 findings)
+        run: npm audit --omit=dev
+
+      - name: Download Spine sample assets + generate sound
+        run: npm run assets
+
+      - name: Install headless Chromium for Playwright
+        run: npx playwright install --with-deps chromium-headless-shell
+
+      - name: Production bundle check (no test hooks, entry-size budget)
+        run: npm run test:bundle
+
+      - name: Build e2e bundle and start servers
+        run: |
+          mkdir -p logs
+          npm run build:e2e
+          nohup npm run server > logs/server.log 2>&1 &
+          nohup npm run preview > logs/preview.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -s -o /dev/null http://localhost:2567/ && curl -s -o /dev/null http://localhost:4173/; then exit 0; fi
+            sleep 1
+          done
+          echo "servers did not start"; cat logs/server.log logs/preview.log; exit 1
+
+      - name: End-to-end test (two players, cheats, reconnection, reduced motion)
+        run: npm run test:e2e
+        env:
+          BASE: http://localhost:4173
+          SERVER_LOG: logs/server.log
+
+      - name: Responsive layout test (portrait / landscape / safe area)
+        run: npm run test:layout
+        env:
+          BASE: http://localhost:4173
+
+      - name: Upload logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pixi-colyseus-card-logs
+          path: demos/pixi-colyseus-card/logs/
+          retention-days: 7
