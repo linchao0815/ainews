@@ -11,7 +11,8 @@
     "test:e2e": "node tests/e2e.mjs",
     "cap:android": "npx cap add android && npx cap sync android",
     "test:bundle": "node tests/check-bundle.mjs",
-    "build:e2e": "vite build --mode e2e"
+    "build:e2e": "vite build --mode e2e",
+    "test:layout": "node tests/responsive.mjs"
   },
   "license": "UNLICENSED",
   "type": "module",

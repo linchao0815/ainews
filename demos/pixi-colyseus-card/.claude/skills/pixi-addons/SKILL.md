@@ -28,6 +28,19 @@ description: "本專案 PixiJS 周邊套件的用法與陷阱：@pixi/ui（Fancy
 - 子物件加入排版有兩種寫法：建構時傳 `layout: true` 或樣式物件，例如 `new Text({ text, style, layout: true })`、`new Container({ layout: { flexDirection: "row", gap: 80 } })`。物件建好之後，也可以直接設定 `obj.layout = { width, height }`，@pixi/ui 的按鈕就是用這種方式。
 - 排版會自己決定物件的位置。被排版的物件，不要再手動設定 `x`、`y`。要做浮動效果（例如角色跳躍），把它包進一個有固定尺寸的 Container，再對內層物件設定位置（參考 `boyHolder`）。
 - 旋轉、縮放已經在排版中的物件，不會觸發重新排版（官方 README）。所以翻牌這類 GSAP 縮放動畫可以放心使用。
+- **文字要換行時**：寫成 `layout: { width: N, objectFit: "none" }`，再搭配 `style.wordWrap: true`。這兩個設定缺一不可，原因如下（已實測，並查過 `dist/core/mixins/TextMixin.mjs`）：
+  - @pixi/layout 會**用排版算出來的寬度蓋掉 `style.wordWrapWidth`**。如果只寫 `layout: true`，排版寬度就是整行文字不換行時的寬度，結果永遠不會換行。
+  - `objectFit` 預設是 `"scale-down"`，文字太寬時會**把整行字縮小**，而不是換行。實測 26px 的標題被縮到每行只有約 12px，在手機上幾乎看不清楚。
+- **使用者輸入的文字**（例如玩家名稱）一定要給固定寬度並允許換行（`breakWords: true`）。否則名稱一長，就會把整個版面撐寬，甚至超出螢幕。
+- **響應式版面的做法**（見 `client/main.ts` 的 `arrange()`）：
+  - 依照螢幕方向，選用直式（480×854）或橫式（854×480）的設計尺寸。
+  - 排版的根節點 `root` 照設計尺寸排版，外面再包一層沒有排版的 `holder`，用來縮放和置中。之所以不直接縮放 `root`，是因為排版可能會改寫根節點的位置。
+  - 切換直、橫式時，要把子物件重新掛到不同的容器裡，因為 Yoga 不支援 `order` 屬性。
+
+## 第 2.5 步：手機螢幕適配的檢查
+
+- `npm run test:layout` 會在 4 種手機尺寸（iPhone 與小螢幕 Android，各有直式與橫式）和模擬瀏海的情況下，檢查以下幾項：按鈕至少 44×44 CSS px、按鈕、牌、標題都完整在畫面和安全區域內、直式與橫式的排列方向正確、標題沒有被縮小。
+- **數字通過之後，還要打開 `logs/responsive/*.png` 截圖看過**。這次標題被縮小的問題，就是先在截圖上發現，之後才補上測試的。
 
 ## 第 3 步：@pixi/ui（UI 元件）
 

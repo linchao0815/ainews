@@ -1,6 +1,6 @@
 // Must be imported before creating the Application so layout mixins apply.
 import "@pixi/layout";
-import { Application, Assets, Container, Graphics, Text } from "pixi.js";
+import { Application, Assets, CanvasTextMetrics, Container, Graphics, Text } from "pixi.js";
 import { FancyButton } from "@pixi/ui";
 import { sound } from "@pixi/sound";
 import { Spine } from "@esotericsoftware/spine-pixi-v8";
@@ -90,7 +90,11 @@ function rankName(v: number) {
 
 (async () => {
   const app = new Application();
-  await app.init({ background: "#12324a", width: 720, height: 640, antialias: true });
+  // Full-window canvas; DPR capped at 2 so 3x phones don't triple the fill cost.
+  await app.init({
+    background: "#12324a", resizeTo: window, antialias: true,
+    autoDensity: true, resolution: Math.min(window.devicePixelRatio || 1, 2),
+  });
   document.body.appendChild(app.canvas);
 
   // ---------- assets: Spine skeleton + sound ----------
@@ -100,11 +104,16 @@ function rankName(v: number) {
   sound.add("reveal", "/assets/reveal.wav");
 
   // ---------- layout ----------
-  app.stage.layout = {
-    width: 720, height: 640, flexDirection: "column",
-    alignItems: "center", justifyContent: "flex-start", gap: 18, paddingTop: 20,
-  };
-  const title = new Text({ text: `PixiJS + Colyseus 比大小 — ${NAME}`, style: { fill: 0xffffff, fontSize: 26 }, layout: true });
+  // Player names are user input: wrap the title so a long name can't widen the layout.
+  // @pixi/layout overwrites style.wordWrapWidth with the node's computed layout width,
+  // so the width must be set on `layout` (with `layout: true` the width is the unwrapped
+  // text width and nothing ever wraps).
+  const title = new Text({
+    text: `PixiJS + Colyseus 比大小 — ${NAME}`,
+    style: { fill: 0xffffff, fontSize: 26, wordWrap: true, breakWords: true, align: "center" },
+    // objectFit "none": the default "scale-down" shrinks the whole line instead of wrapping.
+    layout: { width: 400, objectFit: "none" },
+  });
   const status = new Text({ text: "連線中…", style: { fill: 0xffd479, fontSize: 22 }, layout: true });
   const scoreText = new Text({ text: "", style: { fill: 0xcfe8ff, fontSize: 20 }, layout: true });
 
@@ -129,7 +138,60 @@ function rankName(v: number) {
   boy.position.set(100, 145);
   boyHolder.addChild(boy);
 
-  app.stage.addChild(title, status, scoreText, table, button, boyHolder);
+  // ---------- responsive arrangement (portrait + landscape, safe area) ----------
+  // The game is laid out at a design resolution per orientation, then the whole root is
+  // scaled to fit inside the safe area. The design sizes keep the 64px-high button at
+  // >= 44 CSS px down to a 360x640 phone (see .claude/skills/card-game-design §4).
+  const DESIGN = { portrait: { w: 480, h: 854 }, landscape: { w: 854, h: 480 } } as const;
+  const infoTop = new Container({ layout: { flexDirection: "column", alignItems: "center", gap: 10 } });
+  infoTop.addChild(title, status, scoreText);
+  const controls = new Container({ layout: { flexDirection: "column", alignItems: "center", gap: 12 } });
+  controls.addChild(button, boyHolder);
+  const side = new Container({ layout: { width: 420, flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 28 } });
+  const root = new Container();      // layout root, laid out at design size
+  const holder = new Container();    // positions + scales the root (no layout of its own)
+  holder.addChild(root);
+  app.stage.addChild(holder);
+
+  // env(safe-area-inset-*) is only readable from CSS, so measure it on a probe element.
+  const probe = document.createElement("div");
+  probe.id = "safe-area-probe";
+  probe.style.cssText = "position:fixed;inset:0;visibility:hidden;pointer-events:none;" +
+    "padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
+  document.body.appendChild(probe);
+  const readSafe = () => {
+    const cs = getComputedStyle(probe);
+    return { top: parseFloat(cs.paddingTop) || 0, right: parseFloat(cs.paddingRight) || 0,
+      bottom: parseFloat(cs.paddingBottom) || 0, left: parseFloat(cs.paddingLeft) || 0 };
+  };
+
+  let orientation: "portrait" | "landscape" | "" = "";
+  let uiScale = 1;
+  let safe = readSafe();
+  const arrange = () => {
+    const w = window.innerWidth, h = window.innerHeight;
+    safe = readSafe();
+    const next = w >= h ? "landscape" : "portrait";
+    if (next !== orientation) {
+      orientation = next;
+      root.removeChildren();
+      side.removeChildren();
+      if (orientation === "portrait") root.addChild(infoTop, table, controls);
+      else { side.addChild(infoTop, controls); root.addChild(table, side); }
+    }
+    const d = DESIGN[orientation];
+    root.layout = {
+      width: d.w, height: d.h, flexDirection: orientation === "portrait" ? "column" : "row",
+      alignItems: "center", justifyContent: "space-evenly",
+    };
+    const availW = Math.max(1, w - safe.left - safe.right);
+    const availH = Math.max(1, h - safe.top - safe.bottom);
+    uiScale = Math.min(availW / d.w, availH / d.h);
+    holder.scale.set(uiScale);
+    holder.position.set(safe.left + (availW - d.w * uiScale) / 2, safe.top + (availH - d.h * uiScale) / 2);
+  };
+  arrange();
+  window.addEventListener("resize", arrange);
 
   // ---------- networking ----------
   const client = new Client(SERVER);
@@ -217,6 +279,13 @@ function rankName(v: number) {
     // Consented leave (CloseCode.CONSENTED): skips onDrop, so the server frees the seat
     // immediately instead of holding it for reconnection. Tests call this before closing.
     leave: () => room.leave(),
+    ui: () => {
+      const r = (o: Container) => { const b = o.getBounds(); return { x: b.x, y: b.y, width: b.width, height: b.height }; };
+      const titleLines = CanvasTextMetrics.measureText(title.text, title.style).lines.length;
+      const tb = r(title);
+      return { orientation, scale: uiScale, safe, title: tb, titleLines, titleLineHeight: tb.height / titleLines,
+        button: r(button), cards: [r(myCard), r(oppCard)] };
+    },
   };
   render();
 })().catch((e) => { errors.push(String(e?.stack ?? e)); console.error(e); });

@@ -34,6 +34,8 @@
 3. **實作改動。**
 4. **補測試**：新增的每一條規則或功能，都要在 `tests/e2e.mjs` 加一筆 `check(...)`。作弊情境用 `window.__demo.rawSend()` 模擬。
 5. **執行 `npm run test:e2e`**。完成條件：最後一行印出 `ALL PASS`。如果改動影響畫面，還要看 `logs/e2e/*.png` 截圖確認。
+   - 改到版面、文字或 UI 時，**還要跑 `npm run test:layout`**（4 種手機尺寸，直式、橫式加上安全區域），並查看 `logs/responsive/*.png`。
+   - 測試期間修改 `client/main.ts` 或 `index.html`，Vite 會整頁重新載入，正在跑的測試就會出現「Execution context was destroyed」。這是時機問題，不是程式錯誤，存檔後等 2～3 秒再重跑就好。
 6. **測打包後的版本（改到打包或資源載入時才需要）**：
    - 先執行 `npm run build:e2e`（e2e 模式，會保留測試掛鉤），再於背景執行 `npm run preview`（port 4173），然後設定 `BASE=http://localhost:4173` 跑一次 `npm run test:e2e`。
    - 接著執行 `npm run test:bundle`，確認正式版打包裡沒有測試掛鉤。

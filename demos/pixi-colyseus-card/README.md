@@ -31,6 +31,7 @@
   - `claim_win`：玩家自己宣稱獲勝
   - `set_card`：玩家自己改牌
   - 重複送出 `ready`
+- **手機畫面適配**：直式和橫式都支援。畫面依螢幕方向選用 480×854 或 854×480 的設計尺寸，再縮放到符合安全區域（避開瀏海與底部橫條，需搭配 `viewport-fit=cover`）。在 360×640 的小手機上，按鈕仍然至少有 44×44 CSS px。裝置像素比（devicePixelRatio）上限為 2。
 - **斷線重連**：玩家斷線時，伺服器保留座位 20 秒（包括手牌和分數），前端會自動重新連線，對手的畫面會顯示「對手斷線」。被判定為竄改訊息而踢出的玩家，則不保留座位。
 - **減少動態效果**：系統開啟「減少動態效果」（`prefers-reduced-motion`）時，翻牌直接換成新的牌面，不播動畫。
 
@@ -62,6 +63,7 @@ npm run test:e2e                                  # 測開發版（localhost:517
 npm run build:e2e; npm run preview                # 用 e2e 模式打包（保留測試掛鉤），在 localhost:4173 提供
 $env:BASE = "http://localhost:4173"; npm run test:e2e
 npm run test:bundle                               # 確認一般正式版打包不含測試掛鉤
+npm run test:layout                               # 4 種手機尺寸（直式／橫式）+ 安全區域；截圖在 logs/responsive/
 ```
 
 伺服器的輸出要導到 `logs/server.log`，日誌頻率限制那一項檢查才讀得到（可以用環境變數 `SERVER_LOG` 指定其他路徑），例如 `npm run server > logs/server.log`。讀不到這個檔案時，該項會判為「未評估」，不會當作通過。
