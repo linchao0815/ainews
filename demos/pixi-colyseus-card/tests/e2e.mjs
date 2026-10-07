@@ -6,6 +6,9 @@ const BASE = process.env.BASE ?? "http://localhost:5173";
 const OUT = "logs/e2e";
 // The server's stdout must be redirected here for the log rate-limit check.
 const SERVER_LOG = process.env.SERVER_LOG ?? "logs/server.log";
+// Expected while a page is deliberately offline: the SDK's reconnection attempts fail
+// until the network is back. Anything else logged as an error still fails the run.
+const EXPECTED_ERROR = /WebSocket connection to 'ws:\/\/[^']+reconnectionToken=[^']+' failed/;
 fs.mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const report = { checks: [], pass: true };
@@ -21,7 +24,7 @@ const consoleErrors = { A: [], B: [] };
 for (const name of ["A", "B"]) {
   const ctx = await browser.newContext({ viewport: { width: 760, height: 680 } });
   const page = await ctx.newPage();
-  page.on("console", (m) => { if (m.type() === "error") consoleErrors[name].push(m.text()); });
+  page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_ERROR.test(m.text())) consoleErrors[name].push(m.text()); });
   page.on("pageerror", (e) => consoleErrors[name].push(`pageerror: ${e.message}`));
   await page.goto(`${BASE}/?name=${name}`);
   pages[name] = page;
@@ -106,6 +109,31 @@ try {
   check("第 2 局完成開牌", r2.round === 2 && r2.phase === "revealed", { winner: r2.winner, players: r2.players.map((p) => [p.name, p.shownCard, p.score]) });
   await page_screens("round2-revealed");
 
+  // --- reconnection: A goes offline for 3 s during round 3, then comes back ---
+  for (const n of ["A", "B"]) await waitFor(n, () => window.__demo.state().round === 3 && window.__demo.machine() === "myChoice", "round3");
+  const beforeDrop = await d("A", () => ({ sid: window.__demo.sessionId, s: window.__demo.state() }));
+  const myBefore = beforeDrop.s.players.find((p) => p.sid === beforeDrop.sid);
+  await pages.A.context().setOffline(true);
+  let oppSawDrop = true;
+  try { await waitFor("B", () => window.__demo.state().players.some((p) => p.name === "A" && p.connected === false), "B sees A disconnected", 8000); } catch { oppSawDrop = false; }
+  check("A 斷線時，B 看到對手斷線（connected=false）", oppSawDrop, await d("B", () => window.__demo.state().players.map((p) => [p.name, p.connected])));
+  await sleep(3000);
+  await pages.A.context().setOffline(false);
+  let reconnected = true;
+  try { await waitFor("A", () => window.__demo.connection?.().reconnects >= 1 && !window.__demo.connection().reconnecting, "A reconnected", 15000); } catch { reconnected = false; }
+  const afterRe = await d("A", () => ({ sid: window.__demo.sessionId, s: window.__demo.state(), c: window.__demo.connection?.() }));
+  const myAfter = afterRe.s.players.find((p) => p.name === "A");
+  check("A 恢復網路後自動重連（同一 sessionId）", reconnected && afterRe.c?.drops >= 1 && myAfter?.sid === beforeDrop.sid, afterRe.c);
+  check("重連後手牌與分數不變", myAfter && myAfter.card === myBefore.card && myAfter.score === myBefore.score, { before: [myBefore.card, myBefore.score], after: [myAfter?.card, myAfter?.score] });
+  let oppSawBack = true;
+  try { await waitFor("B", () => window.__demo.state().players.some((p) => p.name === "A" && p.connected === true), "B sees A back", 8000); } catch { oppSawBack = false; }
+  check("A 回來後，B 看到對手恢復連線", oppSawBack);
+  await clickButton("A");
+  await clickButton("B");
+  let r3 = true;
+  try { for (const n of ["A", "B"]) await waitFor(n, () => window.__demo.machine() === "revealed" && window.__demo.state().round === 3, "revealed r3", 8000); } catch { r3 = false; }
+  check("重連後雙方能完成第 3 局", r3);
+
   const counters = await d("A", () => window.__demo.counters());
   check("GSAP 翻牌動畫有執行", counters.flipCount >= 4, counters);
   check("一般設定下翻牌有動畫（時長 > 0）", counters.lastFlipDuration > 0, counters);
@@ -115,7 +143,7 @@ try {
     const ctx = await browser.newContext({ viewport: { width: 760, height: 680 }, reducedMotion: "reduce" });
     const page = await ctx.newPage();
     consoleErrors[name] = [];
-    page.on("console", (m) => { if (m.type() === "error") consoleErrors[name].push(m.text()); });
+    page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_ERROR.test(m.text())) consoleErrors[name].push(m.text()); });
     page.on("pageerror", (e) => consoleErrors[name].push(`pageerror: ${e.message}`));
     await page.goto(`${BASE}/?name=${name}`);
     pages[name] = page;
@@ -163,5 +191,10 @@ async function page_screens(tag) {
 
 fs.writeFileSync(`${OUT}/report.json`, JSON.stringify(report, null, 2));
 console.log(report.pass ? "\nALL PASS" : "\nSOME FAILED");
+// Consented leave first, so the server frees seats now instead of holding them
+// 20 s for reconnection (which would leak into the next run's matchmaking).
+// Fire-and-forget: leave() never resolves for a client the server already kicked.
+for (const page of Object.values(pages)) await page.evaluate(() => { window.__demo?.leave?.(); }).catch(() => {});
+await sleep(300);
 await browser.close();
 process.exit(report.pass ? 0 : 1);

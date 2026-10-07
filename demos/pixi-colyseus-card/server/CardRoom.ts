@@ -1,6 +1,6 @@
 // @colyseus/core instead of the `colyseus` meta package: the meta package pulls
 // @colyseus/auth -> grant -> elliptic/uuid (npm audit findings) that this game never uses.
-import { Room, validate, type Client } from "@colyseus/core";
+import { Room, validate, CloseCode, type Client } from "@colyseus/core";
 import { schema, t, StateView, type SchemaType } from "@colyseus/schema";
 import { z } from "zod";
 
@@ -12,6 +12,7 @@ export const Player = schema({
   score: t.number(),
   ready: t.boolean(),
   shownCard: t.number(),       // 0 until reveal, then copied from `card`
+  connected: t.boolean().default(true), // false while the seat is held for reconnection
   card: t.number().view(),     // private hand
 }, "Player");
 type PlayerT = SchemaType<typeof Player>;
@@ -24,6 +25,9 @@ export const CardState = schema({
 }, "CardState");
 
 const log = (...a: unknown[]) => console.log("[server]", ...a);
+
+// How long a dropped player's seat (hand, score) is held before onLeave removes it.
+const RECONNECT_SECONDS = 20;
 
 // REJECT logging is rate-limited per (player, reason): at most one line per window,
 // later lines report how many were suppressed. Stops a client from flooding the logs.
@@ -95,6 +99,28 @@ export class CardRoom extends Room {
     if (this.state.players.size === 2) this.deal();
   }
 
+  // Every non-consented close lands here first (Room._onLeave in @colyseus/core).
+  // Calling allowReconnection holds the seat; not calling it makes Colyseus run
+  // onLeave right away.
+  onDrop(client: Client, code?: number) {
+    const p = this.state.players.get(client.sessionId) as PlayerT | undefined;
+    if (code === CloseCode.WITH_ERROR) {
+      // Kicked by validate() (malformed payload): no seat is held for a tampered client.
+      log(`drop ${this.nameOf(client)} code=${code}: kicked, no reconnection`);
+      return;
+    }
+    if (p) p.connected = false;
+    log(`drop ${this.nameOf(client)} code=${code}: holding seat ${RECONNECT_SECONDS}s`);
+    this.allowReconnection(client, RECONNECT_SECONDS);
+  }
+
+  onReconnect(client: Client) {
+    const p = this.state.players.get(client.sessionId) as PlayerT | undefined;
+    if (p) p.connected = true;
+    log(`reconnect ${this.nameOf(client)}`);
+  }
+
+  // Gone for good: consented leave, kicked, or the reconnection window expired.
   onLeave(client: Client) {
     log(`leave ${this.nameOf(client)}`);
     this.state.players.delete(client.sessionId);

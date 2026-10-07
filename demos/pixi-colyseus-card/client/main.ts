@@ -136,6 +136,7 @@ function rankName(v: number) {
   const room = await client.joinOrCreate("card", { name: NAME });
   actor.send({ type: "JOINED" });
   let leaveCode: number | null = null;
+  let drops = 0, reconnects = 0, reconnecting = false;
   room.onLeave((code: number) => { leaveCode = code; });
   // 0.18 standard callbacks API (see .claude/skills/colyseus/SKILL.md "State callbacks").
   const callbacks = Callbacks.get(room);
@@ -153,12 +154,18 @@ function rankName(v: number) {
     const st = actor.getSnapshot().value;
     // Enabled iff the machine would accept READY_SENT now (see .claude/skills/xstate-flow).
     button.enabled = actor.getSnapshot().can({ type: "READY_SENT" });
-    status.text = ({
-      connecting: "連線中…", waiting: "等待對手加入…", myChoice: "看完你的牌，按「開牌」",
-      waitingOpponent: "等待對手開牌…",
-      revealed: room.state.winner === "draw" ? "平手！" : room.state.winner === room.sessionId ? "你贏了！" : "你輸了",
-    } as Record<string, string>)[String(st)] ?? String(st);
+    status.text = reconnecting ? "連線中斷，重新連線中…"
+      : o && o.connected === false ? "對手斷線，等待重新連線（最多 20 秒）…"
+      : ({
+        connecting: "連線中…", waiting: "等待對手加入…", myChoice: "看完你的牌，按「開牌」",
+        waitingOpponent: "等待對手開牌…",
+        revealed: room.state.winner === "draw" ? "平手！" : room.state.winner === room.sessionId ? "你贏了！" : "你輸了",
+      } as Record<string, string>)[String(st)] ?? String(st);
   };
+
+  // 0.18 reconnection: the SDK retries on the same Room instance; callbacks stay attached.
+  room.onDrop(() => { drops++; reconnecting = true; render(); });
+  room.onReconnect(() => { reconnects++; reconnecting = false; render(); });
 
   callbacks.listen("phase", (phase: string) => {
     if (phase === "dealt") actor.send({ type: "DEALT" });
@@ -197,7 +204,7 @@ function rankName(v: number) {
     state: () => ({
       phase: room.state.phase, round: room.state.round, winner: room.state.winner,
       players: [...room.state.players.entries()].map(([sid, p]: [string, any]) => ({
-        sid, name: p.name, score: p.score, ready: p.ready, shownCard: p.shownCard, card: p.card,
+        sid, name: p.name, score: p.score, ready: p.ready, shownCard: p.shownCard, card: p.card, connected: p.connected,
       })),
     }),
     cards: () => ({ me: myCard.debug, opp: oppCard.debug }),
@@ -206,7 +213,10 @@ function rankName(v: number) {
     soundExists: () => sound.exists("reveal"),
     counters: () => ({ flipCount, soundPlays, lastFlipDuration, reducedMotion }),
     rawSend: (type: string, msg?: unknown) => room.send(type, msg),
-    connection: () => ({ leaveCode }),
+    connection: () => ({ leaveCode, drops, reconnects, reconnecting }),
+    // Consented leave (CloseCode.CONSENTED): skips onDrop, so the server frees the seat
+    // immediately instead of holding it for reconnection. Tests call this before closing.
+    leave: () => room.leave(),
   };
   render();
 })().catch((e) => { errors.push(String(e?.stack ?? e)); console.error(e); });
