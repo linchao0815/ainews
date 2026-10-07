@@ -1,50 +1,27 @@
-// End-to-end check: two real browser pages play two rounds against the Colyseus server.
-import { chromium } from "@playwright/test";
-import fs from "node:fs";
-import { spawn } from "node:child_process";
+// High-card e2e: two real browser pages play against the Colyseus server.
+// Plumbing (browsers, waiting, reporting, offline, extra server, cleanup) is in kit/test.
+import { createHarness } from "../kit/test/harness.mjs";
 
-const BASE = process.env.BASE ?? "http://localhost:5173";
-const OUT = "logs/e2e";
-// The server's stdout must be redirected here for the log rate-limit check.
-const SERVER_LOG = process.env.SERVER_LOG ?? "logs/server.log";
-// Expected while a page is deliberately offline: the SDK's reconnection attempts fail
-// until the network is back. Anything else logged as an error still fails the run.
-const EXPECTED_ERROR = /WebSocket connection to 'ws:\/\/[^']+reconnectionToken=[^']+' failed/;
-fs.mkdirSync(OUT, { recursive: true });
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const report = { checks: [], pass: true };
-const check = (name, ok, detail) => {
-  report.checks.push({ name, ok: !!ok, detail });
-  if (!ok) report.pass = false;
-  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail !== undefined ? "  " + JSON.stringify(detail) : ""}`);
-};
-
-const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
-const pages = {};
-const consoleErrors = { A: [], B: [] };
-for (const name of ["A", "B"]) {
-  const ctx = await browser.newContext({ viewport: { width: 760, height: 680 } });
-  const page = await ctx.newPage();
-  page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_ERROR.test(m.text())) consoleErrors[name].push(m.text()); });
-  page.on("pageerror", (e) => consoleErrors[name].push(`pageerror: ${e.message}`));
-  await page.goto(`${BASE}/?name=${name}`);
-  pages[name] = page;
-  await sleep(300);
-}
-
-const d = (name, expr) => pages[name].evaluate(expr);
-async function waitFor(name, fn, label, timeout = 15000) {
-  const t0 = Date.now();
-  while (Date.now() - t0 < timeout) {
-    try { if (await pages[name].evaluate(fn)) return true; } catch {}
+const h = await createHarness({ outDir: "logs/e2e" });
+const { check, sleep, d, waitFor, pages, consoleErrors, serverLog } = h;
+// Wait until the button is enabled and its position has settled (two equal readings) before
+// clicking: right after a reload the layout may not be final yet and the click would miss.
+async function clickButton(name) {
+  let prev = "";
+  await waitFor(name, () => window.__demo?.buttonCenter?.().enabled, `${name} button enabled`, 8000).catch(() => {});
+  for (let i = 0; i < 30; i++) {
+    const c = JSON.stringify(await d(name, () => window.__demo.buttonCenter()));
+    if (c === prev) break;
+    prev = c;
     await sleep(100);
   }
-  throw new Error(`timeout waiting for ${label} on ${name}`);
+  return h.clickAt(name, () => window.__demo.buttonCenter());
 }
-async function clickButton(name) {
-  const c = await d(name, () => window.__demo.buttonCenter());
-  await pages[name].mouse.click(c.x, c.y);
-  return c;
+const page_screens = (tag) => h.screenshot(tag, ["A", "B"]);
+
+for (const name of ["A", "B"]) {
+  await h.openPlayer(name);
+  await sleep(300);
 }
 
 try {
@@ -170,15 +147,7 @@ try {
   check("一般設定下翻牌有動畫（時長 > 0）", counters.lastFlipDuration > 0, counters);
 
   // --- reduced motion: a second pair joins a new room with prefers-reduced-motion ---
-  for (const name of ["C", "D"]) {
-    const ctx = await browser.newContext({ viewport: { width: 760, height: 680 }, reducedMotion: "reduce" });
-    const page = await ctx.newPage();
-    consoleErrors[name] = [];
-    page.on("console", (m) => { if (m.type() === "error" && !EXPECTED_ERROR.test(m.text())) consoleErrors[name].push(m.text()); });
-    page.on("pageerror", (e) => consoleErrors[name].push(`pageerror: ${e.message}`));
-    await page.goto(`${BASE}/?name=${name}`);
-    pages[name] = page;
-  }
+  for (const name of ["C", "D"]) await h.openPlayer(name, { contextOptions: { reducedMotion: "reduce" } });
   for (const n of ["C", "D"]) await waitFor(n, () => window.__demo?.machine() === "myChoice", "myChoice (reduced motion)");
   const cC = await d("C", () => window.__demo.counters());
   check("減少動態效果時翻牌立即完成（時長 = 0）", cC.lastFlipDuration === 0, cC);
@@ -194,16 +163,14 @@ try {
   check("對手被踢出後，另一方回到等待狀態", dWaiting, await d("D", () => window.__demo.machine()));
 
   // --- REJECT log rate limit: a 50-message burst may add at most 2 log lines ---
-  const countRejects = () => fs.existsSync(SERVER_LOG)
-    ? fs.readFileSync(SERVER_LOG, "utf8").split("\n").filter((l) => l.includes("REJECT claim_win from A")).length
-    : null;
+  const countRejects = () => h.countServerLog(/REJECT claim_win from A/);
   const before = countRejects();
   await d("A", () => { for (let i = 0; i < 50; i++) window.__demo.rawSend("claim_win"); });
   await sleep(800);
   const after = countRejects();
   check("連續 50 筆作弊訊息，REJECT 日誌最多增加 2 行（頻率限制）",
     before !== null && after !== null && after - before <= 2,
-    before === null ? `未評估：找不到伺服器日誌 ${SERVER_LOG}` : { before, after });
+    before === null ? `未評估：找不到伺服器日誌 ${serverLog}` : { before, after });
   check("開牌音效有播放（無例外）", counters.soundPlays >= 2, counters);
   const trans = transA;
   check("xstate 流程轉換正確", trans.startsWith("connecting > waiting > myChoice > waitingOpponent > revealed > myChoice"), trans);
@@ -216,56 +183,27 @@ try {
   await page_screens("failure");
 }
 
-async function page_screens(tag) {
-  for (const n of ["A", "B"]) await pages[n].screenshot({ path: `${OUT}/${tag}-${n}.png` });
+// --- seat release after the reconnection window: extra server with RECONNECT_SECONDS=2 ---
+try {
+  const short = await h.spawnServer({ port: 2568, env: { RECONNECT_SECONDS: "2" } });
+  for (const name of ["E", "F"]) await h.openPlayer(name, { query: { server: short.url } });
+  for (const n of ["E", "F"]) await waitFor(n, () => window.__demo?.machine() === "myChoice", "myChoice (short server)");
+  const sidE = await d("E", () => window.__demo.sessionId);
+  await sleep(5500); // past the SDK's 5 s minUptime, so this is a real drop (not an early-join failure)
+  await h.setOffline("E", true);
+  let released = true;
+  try { await waitFor("F", () => window.__demo.state().players.length === 1 && window.__demo.machine() === "waiting", "F sees seat released", 12000); } catch { released = false; }
+  check("斷線超過保留時間（2 秒）後座位被釋放，對手回到等待", released, await d("F", () => ({ players: window.__demo.state().players.map((p) => p.name), machine: window.__demo.machine() })));
+  await h.setOffline("E", false);
+  await pages.E.reload();
+  let rejoined = true;
+  try { await waitFor("E", () => window.__demo?.machine() === "myChoice", "E rejoined", 15000); } catch { rejoined = false; }
+  const connE = rejoined ? await d("E", () => ({ sid: window.__demo.sessionId, c: window.__demo.connection() })) : null;
+  check("過期憑證接回失敗後改為重新加入，並能再次與對手配對", rejoined && connE.c.resumed === false && connE.sid !== sidE, connE && { resumed: connE.c.resumed, newSid: connE.sid !== sidE });
+  const lines = short.log().split(/\r?\n/);
+  check("短保留伺服器有記錄座位逾時離開", lines.some((l) => /leave E/.test(l)), lines.filter((l) => /drop E|leave E/.test(l)));
+} catch (e) {
+  check("座位釋放流程", false, String(e));
 }
 
-// --- seat release after the reconnection window: dedicated server with RECONNECT_SECONDS=2 ---
-{
-  const SHORT_PORT = 2568;
-  const short = spawn(process.execPath, ["--import", "tsx", "server/index.ts"],
-    { env: { ...process.env, PORT: String(SHORT_PORT), RECONNECT_SECONDS: "2" }, stdio: ["ignore", "pipe", "pipe"] });
-  let shortLog = "";
-  short.stdout.on("data", (b) => { shortLog += b; });
-  short.stderr.on("data", (b) => { shortLog += b; });
-  try {
-    for (let i = 0; i < 150 && !shortLog.includes("listening"); i++) await sleep(100);
-    for (const name of ["E", "F"]) {
-      const ctx = await browser.newContext({ viewport: { width: 760, height: 680 } });
-      const page = await ctx.newPage();
-      consoleErrors[name] = [];
-      await page.goto(`${BASE}/?name=${name}&server=ws://localhost:${SHORT_PORT}`);
-      pages[name] = page;
-    }
-    for (const n of ["E", "F"]) await waitFor(n, () => window.__demo?.machine() === "myChoice", "myChoice (short server)");
-    const sidE = await d("E", () => window.__demo.sessionId);
-    await sleep(5500); // past the SDK's 5 s minUptime, so this is a real drop (not an early-join failure)
-    await pages.E.context().setOffline(true);
-    let released = true;
-    try { await waitFor("F", () => window.__demo.state().players.length === 1 && window.__demo.machine() === "waiting", "F sees seat released", 12000); } catch { released = false; }
-    check("斷線超過保留時間（2 秒）後座位被釋放，對手回到等待", released, await d("F", () => ({ players: window.__demo.state().players.map((p) => p.name), machine: window.__demo.machine() })));
-    await pages.E.context().setOffline(false);
-    await pages.E.reload();
-    let rejoined = true;
-    try { await waitFor("E", () => window.__demo?.machine() === "myChoice", "E rejoined", 15000); } catch { rejoined = false; }
-    const connE = rejoined ? await d("E", () => ({ sid: window.__demo.sessionId, c: window.__demo.connection() })) : null;
-    check("過期憑證接回失敗後改為重新加入，並能再次與對手配對", rejoined && connE.c.resumed === false && connE.sid !== sidE, connE && { resumed: connE.c.resumed, newSid: connE.sid !== sidE });
-    check("短保留伺服器有記錄座位逾時離開", /leave E/.test(shortLog), shortLog.split(/\r?\n/).filter((l) => /drop E|leave E/.test(l)));
-  } catch (e) {
-    check("座位釋放流程", false, String(e));
-  } finally {
-    for (const n of ["E", "F"]) if (pages[n]) await pages[n].evaluate(() => { window.__demo?.leave?.(); }).catch(() => {});
-    await sleep(200);
-    short.kill();
-  }
-}
-
-// Consented leave first, so the server frees seats now instead of holding them
-// 20 s for reconnection (which would leak into the next run's matchmaking).
-// Fire-and-forget: leave() never resolves for a client the server already kicked.
-for (const page of Object.values(pages)) await page.evaluate(() => { window.__demo?.leave?.(); }).catch(() => {});
-await sleep(300);
-fs.writeFileSync(`${OUT}/report.json`, JSON.stringify(report, null, 2));
-console.log(report.pass ? "\nALL PASS" : "\nSOME FAILED");
-await browser.close();
-process.exit(report.pass ? 0 : 1);
+await h.finish();

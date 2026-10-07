@@ -7,6 +7,20 @@ description: "本專案 Colyseus 伺服器（server/CardRoom.ts）的寫法規�
 
 API 的用法看官方 `colyseus` 技能，這裡只寫**本專案自己的規則**，以及實際跑過才知道的行為。官方技能和本技能衝突時，以本技能為準，因為這裡的內容都實測過。
 
+## 0. 共用工具在 `kit/`（直接呼叫，不要在遊戲裡重寫）
+
+下列機制已經抽成可組合的函式，所有遊戲都要用同一份。這裡**不用繼承**：Colyseus 只會讀最終的 `this.messages`，子類別一宣告就會把父類別的整份蓋掉（`@colyseus/core` 的 `Room.mjs` 約第 302 行）。
+
+| 需求 | 函式 | 檔案 |
+|---|---|---|
+| 啟動伺服器（`PORT` 環境變數、WebSocketTransport） | `startServer({ 房間名: defineRoom(X) })` | `kit/server/start.ts` |
+| 被拒絕時記錄，並限制記錄頻率（每個房間各自一份） | `private logReject = createRejectLogger(log)`；在 `onLeave` 呼叫 `this.logReject.forget(id)` | `kit/server/rejectLog.ts` |
+| 斷線時保留座位（自動排除 4002） | 在 `onDrop` 裡呼叫 `holdSeatOnDrop(this, client, code, { seconds, onHold, log, label })`；秒數用 `reconnectSeconds()` | `kit/server/reconnection.ts` |
+| 前端加入房間，或接回原本的座位 | `joinOrResume(client, { gameId, roomName, joinOptions })` | `kit/client/session.ts` |
+| 決定前端連到哪個伺服器 | `resolveServerUrl()` | `kit/client/serverUrl.ts` |
+| 安全區域與縮放 | `createSafeAreaProbe()`、`fitToSafeArea(holder, design, safe)`、`orientationOf(w, h)` | `kit/client/fit.ts` |
+| e2e 測試的共用設施 | `createHarness({ outDir })`：`openPlayer`、`waitFor`、`clickAt`、`setOffline`、`spawnServer`、`countServerLog`、`finish` | `kit/test/harness.mjs` |
+
 ## 1. Import 來源
 
 - 伺服器端從 `@colyseus/core` 和 `@colyseus/ws-transport` import，並在 `defineServer` 明確指定 `transport: new WebSocketTransport()`。
@@ -23,7 +37,7 @@ API 的用法看官方 `colyseus` 技能，這裡只寫**本專案自己的規�
    - 沒有內容的訊息（例如 `ready`）不需要 validate。
 3. 處理函式一開始先檢查兩件事：**現在的遊戲階段**（`state.phase`）對不對、**送訊息的人**是誰。
    - 送訊息的人以 `client` 參數為準，**不要相信訊息內容裡夾帶的 sessionId**。
-4. 不合法就呼叫 `logReject(client.sessionId, 原因代碼, 說明)`，然後 return。**不要直接寫 `log("REJECT …")`**。
+4. 不合法就呼叫 `this.logReject(client.sessionId, 原因代碼, 說明)`，然後 return。這個函式來自 kit 的 `createRejectLogger`。**不要直接寫 `log("REJECT …")`**。
    - `logReject` 會限制記錄頻率：同一個玩家、同一個原因，5 秒內只記一行，後面的會累計成「+N suppressed」附在下一行。
    - 實測連送 50 筆作弊訊息，日誌只多 1 行。
 5. 所有規則和計分都只寫在伺服器。前端只負責顯示，以及送出「我想做什麼」。

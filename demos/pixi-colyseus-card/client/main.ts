@@ -10,15 +10,16 @@ import { Spine } from "@esotericsoftware/spine-pixi-v8";
 type SoundLib = typeof import("@pixi/sound")["sound"];
 import { gsap } from "gsap";
 import { setup, createActor } from "xstate";
-import { Client, Callbacks, CloseCode } from "@colyseus/sdk";
+import { Client, Callbacks } from "@colyseus/sdk";
+import { resolveServerUrl } from "../kit/client/serverUrl.ts";
+import { joinOrResume } from "../kit/client/session.ts";
+import { createSafeAreaProbe, fitToSafeArea, orientationOf } from "../kit/client/fit.ts";
 
 const params = new URLSearchParams(location.search);
 const NAME = params.get("name") ?? "玩家";
 // Identifies this game in shared browser storage (several games may run on one origin).
 const GAME_ID = "high-card";
-// Server endpoint: ?server= (dev/tests) > VITE_SERVER_URL (set at build time; Capacitor
-// apps have no address bar) > same host, port 2567.
-const SERVER = params.get("server") ?? import.meta.env.VITE_SERVER_URL ?? `ws://${location.hostname}:2567`;
+const SERVER = resolveServerUrl();
 
 const errors: string[] = [];
 const transitions: string[] = [];
@@ -169,25 +170,14 @@ function rankName(v: number) {
   holder.addChild(root);
   app.stage.addChild(holder);
 
-  // env(safe-area-inset-*) is only readable from CSS, so measure it on a probe element.
-  const probe = document.createElement("div");
-  probe.id = "safe-area-probe";
-  probe.style.cssText = "position:fixed;inset:0;visibility:hidden;pointer-events:none;" +
-    "padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
-  document.body.appendChild(probe);
-  const readSafe = () => {
-    const cs = getComputedStyle(probe);
-    return { top: parseFloat(cs.paddingTop) || 0, right: parseFloat(cs.paddingRight) || 0,
-      bottom: parseFloat(cs.paddingBottom) || 0, left: parseFloat(cs.paddingLeft) || 0 };
-  };
+  const readSafe = createSafeAreaProbe();
 
   let orientation: "portrait" | "landscape" | "" = "";
   let uiScale = 1;
   let safe = readSafe();
   const arrange = () => {
-    const w = window.innerWidth, h = window.innerHeight;
     safe = readSafe();
-    const next = w >= h ? "landscape" : "portrait";
+    const next = orientationOf(window.innerWidth, window.innerHeight);
     if (next !== orientation) {
       orientation = next;
       root.removeChildren();
@@ -200,46 +190,20 @@ function rankName(v: number) {
       width: d.w, height: d.h, flexDirection: orientation === "portrait" ? "column" : "row",
       alignItems: "center", justifyContent: "space-evenly",
     };
-    const availW = Math.max(1, w - safe.left - safe.right);
-    const availH = Math.max(1, h - safe.top - safe.bottom);
-    uiScale = Math.min(availW / d.w, availH / d.h);
-    holder.scale.set(uiScale);
-    holder.position.set(safe.left + (availW - d.w * uiScale) / 2, safe.top + (availH - d.h * uiScale) / 2);
+    uiScale = fitToSafeArea(holder, d, safe);
   };
   arrange();
   window.addEventListener("resize", arrange);
 
   // ---------- networking ----------
-  // Resume after a reload / reopened tab: the server holds a dropped seat for 20 s, and the
-  // reconnection token lets this page claim it. sessionStorage (not localStorage) so two tabs
-  // of the same browser can never resume each other's seat.
-  const TOKEN_KEY = `${GAME_ID}:reconnectionToken`;
-  const storage = {
-    get: () => { try { return sessionStorage.getItem(TOKEN_KEY); } catch { return null; } },
-    set: (v: string) => { try { sessionStorage.setItem(TOKEN_KEY, v); } catch { /* private mode etc. */ } },
-    clear: () => { try { sessionStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } },
-  };
+  // Join, or resume this tab's seat after a reload (kit: per-game sessionStorage token,
+  // SDK 0.18.5 token-timing workaround, clear on 4000/4002/4003).
   const client = new Client(SERVER);
-  let resumed = false;
-  let room: Awaited<ReturnType<typeof client.joinOrCreate>>;
-  const saved = storage.get();
-  try {
-    if (!saved) throw new Error("no saved seat");
-    room = await client.reconnect(saved);
-    resumed = true;
-  } catch {
-    storage.clear(); // expired or never existed: start a fresh seat
-    room = await client.joinOrCreate("card", { name: NAME });
-  }
-  storage.set(room.reconnectionToken);
+  const { room, resumed } = await joinOrResume(client, { gameId: GAME_ID, roomName: "card", joinOptions: { name: NAME } });
   actor.send({ type: "JOINED" });
   let leaveCode: number | null = null;
   let drops = 0, reconnects = 0, reconnecting = false;
-  room.onLeave((code: number) => {
-    leaveCode = code;
-    // Consented leave or a rejected/expired seat: nothing left to resume.
-    if (code === CloseCode.CONSENTED || code === CloseCode.WITH_ERROR || code === CloseCode.FAILED_TO_RECONNECT) storage.clear();
-  });
+  room.onLeave((code: number) => { leaveCode = code; });
   // 0.18 standard callbacks API (see .claude/skills/colyseus/SKILL.md "State callbacks").
   const callbacks = Callbacks.get(room);
 
@@ -267,15 +231,7 @@ function rankName(v: number) {
 
   // 0.18 reconnection: the SDK retries on the same Room instance; callbacks stay attached.
   room.onDrop(() => { drops++; reconnecting = true; render(); });
-  // @colyseus/sdk 0.18.5 invokes onReconnect *before* it assigns the new reconnectionToken
-  // (Room.mjs JOIN_ROOM handler), and the server rotates the token on every (re)join, so the
-  // token read synchronously here is already invalid. Save it after the current task.
-  room.onReconnect(() => {
-    reconnects++; reconnecting = false; render();
-    queueMicrotask(() => storage.set(room.reconnectionToken));
-  });
-  // Belt and braces: persist whatever token is current when the page goes away (reload/close).
-  window.addEventListener("pagehide", () => storage.set(room.reconnectionToken));
+  room.onReconnect(() => { reconnects++; reconnecting = false; render(); });
 
   callbacks.listen("phase", (phase: string) => {
     if (phase === "dealt") actor.send({ type: "DEALT" });

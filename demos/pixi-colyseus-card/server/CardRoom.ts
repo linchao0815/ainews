@@ -1,8 +1,8 @@
-// @colyseus/core instead of the `colyseus` meta package: the meta package pulls
-// @colyseus/auth -> grant -> elliptic/uuid (npm audit findings) that this game never uses.
-import { Room, validate, CloseCode, type Client } from "@colyseus/core";
+import { Room, validate, type Client } from "@colyseus/core";
 import { schema, t, StateView, type SchemaType } from "@colyseus/schema";
 import { z } from "zod";
+import { createRejectLogger } from "../kit/server/rejectLog.ts";
+import { holdSeatOnDrop, reconnectSeconds } from "../kit/server/reconnection.ts";
 
 // Public fields go to everyone; `card` is private (.view()) and only reaches
 // clients whose StateView contains this player instance (= the owner).
@@ -26,33 +26,13 @@ export const CardState = schema({
 
 const log = (...a: unknown[]) => console.log("[server]", ...a);
 
-// How long a dropped player's seat (hand, score) is held before onLeave removes it.
-// Default 20 s; RECONNECT_SECONDS env lets tests exercise seat release without a 20 s wait.
-const RECONNECT_SECONDS = (() => {
-  const v = Number(process.env.RECONNECT_SECONDS);
-  return Number.isFinite(v) && v > 0 ? v : 20;
-})();
-
-// REJECT logging is rate-limited per (player, reason): at most one line per window,
-// later lines report how many were suppressed. Stops a client from flooding the logs.
-const REJECT_LOG_WINDOW_MS = 5000;
-const rejectLog = new Map<string, { last: number; suppressed: number }>();
-function logReject(sessionId: string, reason: string, line: string) {
-  const key = `${sessionId}:${reason}`;
-  const now = Date.now();
-  const entry = rejectLog.get(key);
-  if (entry && now - entry.last < REJECT_LOG_WINDOW_MS) {
-    entry.suppressed += 1;
-    return;
-  }
-  const extra = entry?.suppressed ? ` (+${entry.suppressed} suppressed)` : "";
-  rejectLog.set(key, { last: now, suppressed: 0 });
-  log(`REJECT ${line}${extra}`);
-}
+// How long a dropped player's seat (hand, score) is held; RECONNECT_SECONDS env overrides.
+const RECONNECT_SECONDS = reconnectSeconds();
 
 export class CardRoom extends Room {
   maxClients = 2;
   state = new CardState();
+  private logReject = createRejectLogger(log);
 
   // Declarative message map: the primary 0.18 API (see .claude/skills/colyseus/SKILL.md).
   messages = {
@@ -60,11 +40,11 @@ export class CardRoom extends Room {
       const p = this.state.players.get(client.sessionId) as PlayerT | undefined;
       if (!p) return;
       if (this.state.phase !== "dealt") {
-        logReject(client.sessionId, "ready-phase", `ready from ${p.name}: phase=${this.state.phase}`);
+        this.logReject(client.sessionId, "ready-phase", `ready from ${p.name}: phase=${this.state.phase}`);
         return;
       }
       if (p.ready) {
-        logReject(client.sessionId, "ready-dup", `duplicate ready from ${p.name}`);
+        this.logReject(client.sessionId, "ready-dup", `duplicate ready from ${p.name}`);
         return;
       }
       p.ready = true;
@@ -73,12 +53,12 @@ export class CardRoom extends Room {
     },
     // Cheat attempts: the client never decides outcomes or cards.
     claim_win: (client: Client) => {
-      logReject(client.sessionId, "claim_win", `claim_win from ${this.nameOf(client)}: outcome is server-authoritative`);
+      this.logReject(client.sessionId, "claim_win", `claim_win from ${this.nameOf(client)}: outcome is server-authoritative`);
     },
     // validate(): a payload that fails the schema never reaches the handler; Colyseus
     // disconnects the sender with CloseCode.WITH_ERROR (4002).
     set_card: validate(z.number().int(), (client: Client, value: number) => {
-      logReject(client.sessionId, "set_card", `set_card(${value}) from ${this.nameOf(client)}: cards are dealt by server`);
+      this.logReject(client.sessionId, "set_card", `set_card(${value}) from ${this.nameOf(client)}: cards are dealt by server`);
     }),
   };
 
@@ -103,19 +83,13 @@ export class CardRoom extends Room {
     if (this.state.players.size === 2) this.deal();
   }
 
-  // Every non-consented close lands here first (Room._onLeave in @colyseus/core).
-  // Calling allowReconnection holds the seat; not calling it makes Colyseus run
-  // onLeave right away.
+  // Every non-consented close lands here first; the kit helper skips kicked clients (4002).
   onDrop(client: Client, code?: number) {
     const p = this.state.players.get(client.sessionId) as PlayerT | undefined;
-    if (code === CloseCode.WITH_ERROR) {
-      // Kicked by validate() (malformed payload): no seat is held for a tampered client.
-      log(`drop ${this.nameOf(client)} code=${code}: kicked, no reconnection`);
-      return;
-    }
-    if (p) p.connected = false;
-    log(`drop ${this.nameOf(client)} code=${code}: holding seat ${RECONNECT_SECONDS}s`);
-    this.allowReconnection(client, RECONNECT_SECONDS);
+    holdSeatOnDrop(this, client, code, {
+      seconds: RECONNECT_SECONDS, label: this.nameOf(client), log,
+      onHold: () => { if (p) p.connected = false; },
+    });
   }
 
   onReconnect(client: Client) {
@@ -128,7 +102,7 @@ export class CardRoom extends Room {
   onLeave(client: Client) {
     log(`leave ${this.nameOf(client)}`);
     this.state.players.delete(client.sessionId);
-    for (const key of rejectLog.keys()) if (key.startsWith(`${client.sessionId}:`)) rejectLog.delete(key);
+    this.logReject.forget(client.sessionId);
     this.state.phase = "waiting";
   }
 
