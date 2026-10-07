@@ -35,7 +35,7 @@
 ## AI agent 開發
 
 - 開發規則和已知的坑寫在 [AGENTS.md](AGENTS.md)。`CLAUDE.md` 會引用它，所以 Claude Code 也會讀到。
-- `.claude/skills/` 收錄了 Colyseus 和 PixiJS 的官方 agent 技能，都是對應本專案版本的。來源與更新方式見 [.claude/VENDORED-SKILLS.md](.claude/VENDORED-SKILLS.md)。
+- `.claude/skills/` 收錄了 Colyseus、PixiJS、GSAP 的官方 agent 技能，以及 Capawesome 的 Capacitor 技能，全部對應本專案使用的版本。另外還有一個本專案自己寫的 `pixi-addons`，涵蓋 @pixi/ui、@pixi/layout、Spine、@pixi/sound。來源與更新方式見 [.claude/VENDORED-SKILLS.md](.claude/VENDORED-SKILLS.md)。
 
 ## 執行方式
 

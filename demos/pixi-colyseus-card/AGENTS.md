@@ -48,7 +48,10 @@
 
 - **寫或修改 Room、Schema、前端狀態同步、重新連線的程式之前**：讀 `.claude/skills/colyseus/SKILL.md`。這是 Colyseus 官方技能，對應 0.18 版。需要細節時，依它的指引查 `references/` 裡的對應段落。
 - **任何 PixiJS v8 的工作**：從 `.claude/skills/pixijs/SKILL.md`（總入口）開始，它會指引你該讀哪個子技能。本專案只收錄了 26 個子技能中的 14 個；入口技能連到的子技能如果不存在，照它自己的備援規則查 `https://pixijs.download/release/docs/llms.txt`。
-- **技能裡沒有的套件**：@pixi/ui、@pixi/layout、@pixi/sound、spine-pixi-v8、gsap、xstate、Capacitor 都沒有技能。這些套件的規則以本文件為準。
+- **按鈕與 UI 元件、版面排列、Spine 角色、音效，或對 Pixi 物件做 GSAP 動畫之前**：讀 `.claude/skills/pixi-addons/SKILL.md`。這是本專案自己寫的技能，內容以型別定義和實測結果為準。
+- **GSAP 動畫**：一般 API 讀 `gsap-core`，串接多段動畫讀 `gsap-timeline`。這兩份都是 GSAP 官方技能，但它們以 DOM 為對象，用在 Pixi 物件上的差異以 `pixi-addons` 第 6 步為準。
+- **Capacitor 的設定、CLI、Android／iOS 疑難排解**：讀 `capacitor-app-development`。這份是 Capawesome 的技能，裡面會推薦 Capawesome 的付費雲端服務和外掛；本專案優先使用 `@capacitor/*` 官方外掛。另外要注意：遊戲伺服器的位址屬於前端程式的設定（`?server=` 或打包時的環境變數），**和 `capacitor.config.ts` 的 `server.url` 無關**，後者只是開發時即時重新載入（live reload）用的。
+- **xstate**：沒有現成技能，用法以 `client/main.ts` 的 `tableMachine` 為準。
 - **技能和本文件衝突時，以本文件與實測結果為準**。目前已知一處：Colyseus 技能說 `getStateCallbacks` 已經移除，但它在 `@colyseus/sdk` 0.18.5 仍然存在，只是不再推薦使用。本專案統一用 `Callbacks.get`。
 - **技能的來源與更新方式**：見 `.claude/VENDORED-SKILLS.md`。技能內容一律照原樣保存，本專案特有的規則寫在本文件。
 
